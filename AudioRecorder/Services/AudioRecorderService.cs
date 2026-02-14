@@ -1,29 +1,31 @@
-﻿using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
-using AudioRecorder.Models;
-using System.Collections.Concurrent;
+﻿using System.Diagnostics;
+using NAudio.Wave;
 using System.IO;
 
 namespace AudioRecorder.Services;
 
 public class AudioRecorderService : IDisposable
 {
-    private WaveInEvent? microphoneCapture;
-    private WasapiLoopbackCapture? systemCapture;
-    private WaveFileWriter? microphoneWriter;
-    private WaveFileWriter? systemWriter;
-    private readonly object lockObject = new();
-    private bool isRecording;
-    private string? microphoneFilePath;
-    private string? systemFilePath;
+    private WaveInEvent? _microphoneCapture;
+    private WasapiLoopbackCapture? _systemCapture;
+    private WaveFileWriter? _microphoneWriter;
+    private WaveFileWriter? _systemWriter;
+    private readonly Lock _lockObject = new();
+    private bool _isRecording;
+    private static readonly string DocumentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+    private static readonly string BasePath = Path.Combine(DocumentsPath, "AudioRecorder");
+    private string? _currentFilePath;
+    private string? _microphoneFilePath;
+    private string? _systemFilePath;
+    private readonly Stopwatch _timer = new();
 
     public bool IsRecording 
     { 
         get 
         { 
-            lock (lockObject) 
+            lock (_lockObject) 
             { 
-                return isRecording; 
+                return _isRecording; 
             } 
         } 
     }
@@ -32,27 +34,29 @@ public class AudioRecorderService : IDisposable
 
     public void StartRecording(int deviceNumber = 0)
     {
-        lock (lockObject)
+        lock (_lockObject)
         {
-            if (isRecording) return;
+            if (_isRecording) return;
 
             try
             {
-                // Crea file temporanei separati per microfono e sistema
-                microphoneFilePath = "mic.wav";
-                systemFilePath = "sys.wav";
+                _currentFilePath = Path.Combine(BasePath, $"recording_{DateTime.Now:yyyyMMddHHmmss}");
                 
-                var waveFormat = new WaveFormat(44100, 16, 2);
-                microphoneWriter = new WaveFileWriter(microphoneFilePath, waveFormat);
-                systemWriter = new WaveFileWriter(systemFilePath, waveFormat);
+                Directory.CreateDirectory(_currentFilePath);
 
-                SetupMicrophoneCapture(deviceNumber);
                 SetupSystemCapture();
+                SetupMicrophoneCapture(deviceNumber, _systemCapture.WaveFormat);
                 
-                microphoneCapture?.StartRecording();
-                systemCapture?.StartRecording();
+                _microphoneFilePath = Path.Combine(_currentFilePath, "mic.wav");
+                _systemFilePath = Path.Combine(_currentFilePath, "sys.wav");
+                _microphoneWriter = new WaveFileWriter(_microphoneFilePath, _systemCapture.WaveFormat);
+                _systemWriter = new WaveFileWriter(_systemFilePath, _systemCapture.WaveFormat);
                 
-                isRecording = true;
+                _microphoneCapture?.StartRecording();
+                _systemCapture?.StartRecording();
+                _timer.Restart();
+                
+                _isRecording = true;
                 StatusChanged?.Invoke(this, $"Registrazione in corso... (dispositivo #{deviceNumber} + sistema)");
             }
             catch (Exception ex)
@@ -65,61 +69,64 @@ public class AudioRecorderService : IDisposable
 
     public void StopRecording()
     {
-        lock (lockObject)
+        lock (_lockObject)
         {
-            if (!isRecording) return;
+            if (!_isRecording) return;
 
-            microphoneCapture?.StopRecording();
-            systemCapture?.StopRecording();
-            
-            microphoneWriter?.Dispose();
-            systemWriter?.Dispose();
-            microphoneWriter = null;
-            systemWriter = null;
-            
-            isRecording = false;
+            _microphoneCapture?.StopRecording();
+            _systemCapture?.StopRecording();
+            _timer.Stop();
+            _isRecording = false;
             StatusChanged?.Invoke(this, "Registrazione fermata - Pronto per salvare");
         }
     }
 
     public async Task SaveRecordingAsync(string filePath)
     {
-        if (isRecording)
+        if (_isRecording)
             throw new InvalidOperationException("Fermare la registrazione prima di salvare");
 
-        if (string.IsNullOrEmpty(microphoneFilePath) || !File.Exists(microphoneFilePath))
+        if (string.IsNullOrEmpty(_microphoneFilePath) || !File.Exists(_microphoneFilePath))
             throw new InvalidOperationException("Nessuna registrazione del microfono disponibile");
 
-        await Task.Run(() => MixAndSaveFiles(filePath));
+        await Task.Run(() => MixAndSaveFiles(filePath, _microphoneFilePath, _systemFilePath));
 
         StatusChanged?.Invoke(this, $"File salvato: {Path.GetFileName(filePath)}");
-        
-        // Pulisci file temporanei
-        //CleanupTempFiles();
     }
 
-    private void SetupMicrophoneCapture(int deviceNumber)
+    private void SetupMicrophoneCapture(int deviceNumber, WaveFormat waveFormat)
     {
-        microphoneCapture = new WaveInEvent
+        _microphoneCapture = new WaveInEvent
         {
             DeviceNumber = deviceNumber,
-            WaveFormat = new WaveFormat(44100, 16, 2),
+            WaveFormat = waveFormat,
             BufferMilliseconds = 50
         };
 
-        microphoneCapture.DataAvailable += OnMicrophoneDataAvailable;
+        _microphoneCapture.DataAvailable += OnMicrophoneDataAvailable;
+        _microphoneCapture.RecordingStopped += (s, e) =>
+        {
+            _microphoneWriter?.Dispose();
+            _microphoneWriter = null;
+            _microphoneCapture.Dispose();
+            if (e.Exception != null)
+                StatusChanged?.Invoke(this, $"Errore registrazione microfono: {e.Exception.Message}");
+        };
     }
 
     private void SetupSystemCapture()
     {
-        systemCapture = new WasapiLoopbackCapture();
+        _systemCapture = new WasapiLoopbackCapture();
         
         // Configurazione esplicita per evitare problemi di formato
-        systemCapture.ShareMode = NAudio.CoreAudioApi.AudioClientShareMode.Shared;
+        _systemCapture.ShareMode = NAudio.CoreAudioApi.AudioClientShareMode.Shared;
         
-        systemCapture.DataAvailable += OnSystemDataAvailable;
-        systemCapture.RecordingStopped += (s, e) =>
+        _systemCapture.DataAvailable += OnSystemDataAvailable;
+        _systemCapture.RecordingStopped += (s, e) =>
         {
+            _systemWriter.Dispose();
+            _systemWriter = null;
+            _systemCapture.Dispose();
             if (e.Exception != null)
                 StatusChanged?.Invoke(this, $"Errore registrazione sistema: {e.Exception.Message}");
         };
@@ -127,160 +134,72 @@ public class AudioRecorderService : IDisposable
 
     private void OnMicrophoneDataAvailable(object? sender, WaveInEventArgs e)
     {
-        if (microphoneWriter != null && isRecording)
+        if (_microphoneWriter != null && _isRecording)
         {
-            lock (microphoneWriter)
+            lock (_microphoneWriter)
             {
-                microphoneWriter.Write(e.Buffer, 0, e.BytesRecorded);
+                _microphoneWriter.Write(e.Buffer, 0, e.BytesRecorded);
             }
         }
     }
 
     private void OnSystemDataAvailable(object? sender, WaveInEventArgs e)
     {
-        if (systemWriter != null && isRecording && systemCapture != null)
+        if (!_isRecording || _systemWriter == null || _systemCapture == null)
+            return;
+
+        lock (_systemWriter)
         {
-            try
+            // 1) Quanti byte "dovrebbero" esserci nel file secondo il tempo trascorso
+            var waveFormat = _systemCapture.WaveFormat;
+            long expectedBytes = (long)(_timer.Elapsed.TotalSeconds * waveFormat.AverageBytesPerSecond);
+
+            // allinea a BlockAlign (frame intero), evita tagli nel mezzo del campione
+            expectedBytes -= expectedBytes % waveFormat.BlockAlign;
+
+            // 2) Quanti byte ci sono davvero nel file al momento
+            long actualBytes = _systemWriter.Length;
+
+            // 3) Se siamo indietro, scrivi silenzio (byte=0) per colmare il gap
+            long gapBytes = expectedBytes - actualBytes;
+            if (gapBytes > 0)
             {
-                // Converte direttamente senza modifiche se il formato è compatibile
-                if (IsFormatCompatible(systemCapture.WaveFormat))
+                var silenceBuffer = new byte[8192]; // zero-initialized => silenzio
+                while (gapBytes > 0)
                 {
-                    lock (systemWriter)
-                    {
-                        systemWriter.Write(e.Buffer, 0, e.BytesRecorded);
-                    }
-                }
-                else
-                {
-                    // Conversione con resampling appropriato
-                    var convertedData = ConvertSystemAudio(e.Buffer, e.BytesRecorded, systemCapture.WaveFormat);
-                    if (convertedData != null && convertedData.Length > 0)
-                    {
-                        lock (systemWriter)
-                        {
-                            systemWriter.Write(convertedData, 0, convertedData.Length);
-                        }
-                    }
+                    int toWrite = (int)Math.Min(silenceBuffer.Length, gapBytes);
+                    _systemWriter.Write(silenceBuffer, 0, toWrite);
+                    gapBytes -= toWrite;
                 }
             }
-            catch (Exception ex)
-            {
-                // Log errore senza interrompere la registrazione
-                Console.WriteLine($"Errore conversione audio sistema: {ex.Message}");
-            }
+
+            // 4) Scrivi l'audio reale appena arrivato
+            _systemWriter.Write(e.Buffer, 0, e.BytesRecorded);
         }
     }
-
-    private bool IsFormatCompatible(WaveFormat sourceFormat)
-    {
-        return sourceFormat.SampleRate == 44100 && 
-               sourceFormat.BitsPerSample == 16 && 
-               sourceFormat.Channels == 2 &&
-               sourceFormat.Encoding == WaveFormatEncoding.Pcm;
-    }
-
-    private byte[]? ConvertSystemAudio(byte[] buffer, int bytesRecorded, WaveFormat sourceFormat)
+    
+    public void MixAndSaveFiles(string outputPath, string firstFilePath, string secondFilePath)
     {
         try
         {
-            // Crea un provider dal buffer audio
-            var audioBytes = new byte[bytesRecorded];
-            Array.Copy(buffer, audioBytes, bytesRecorded);
-            
-            using var memoryStream = new MemoryStream(audioBytes);
-            using var rawSource = new RawSourceWaveStream(memoryStream, sourceFormat);
-            
-            // Converti il formato se necessario
-            ISampleProvider sampleProvider = rawSource.ToSampleProvider();
-            
-            // Resampling se necessario
-            if (sourceFormat.SampleRate != 44100)
-            {
-                sampleProvider = new WdlResamplingSampleProvider(sampleProvider, 44100);
-            }
-            
-            // Converti a stereo se necessario
-            if (sourceFormat.Channels == 1)
-            {
-                sampleProvider = new MonoToStereoSampleProvider(sampleProvider);
-            }
-            else if (sourceFormat.Channels > 2)
-            {
-                sampleProvider = new MultiplexingSampleProvider(new[] { sampleProvider }, 2);
-            }
-            
-            // Converti i sample a 16-bit PCM
-            var samples = new float[sampleProvider.WaveFormat.SampleRate * sampleProvider.WaveFormat.Channels];
-            var samplesRead = sampleProvider.Read(samples, 0, samples.Length);
-            
-            if (samplesRead == 0) return null;
-            
-            var result = new byte[samplesRead * 2]; // 16-bit = 2 bytes per sample
-            for (int i = 0; i < samplesRead; i++)
-            {
-                var sample = Math.Max(-1f, Math.Min(1f, samples[i])); // Clamp
-                var intSample = (short)(sample * short.MaxValue);
-                var bytes = BitConverter.GetBytes(intSample);
-                result[i * 2] = bytes[0];
-                result[i * 2 + 1] = bytes[1];
-            }
-            
-            return result;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Errore nella conversione audio: {ex.Message}");
-            return null;
-        }
-    }
-
-    private void MixAndSaveFiles(string outputPath)
-    {
-        var waveFormat = new WaveFormat(44100, 16, 2);
-        
-        try
-        {
-            using var outputWriter = new WaveFileWriter(outputPath, waveFormat);
-            
             // Verifica esistenza file
-            var micExists = !string.IsNullOrEmpty(microphoneFilePath) && File.Exists(microphoneFilePath);
-            var sysExists = !string.IsNullOrEmpty(systemFilePath) && File.Exists(systemFilePath);
+            var firstFileExists = !string.IsNullOrEmpty(firstFilePath) && File.Exists(firstFilePath);
+            var secondFileExists = !string.IsNullOrEmpty(secondFilePath) && File.Exists(secondFilePath);
             
-            if (!micExists && !sysExists)
-            {
-                throw new InvalidOperationException("Nessun file audio disponibile per il mixing");
-            }
+            if(!firstFileExists) throw new InvalidOperationException($"File audio non trovato {firstFilePath}");
+            if(!secondFileExists) throw new InvalidOperationException($"File audio non trovato {secondFilePath}");
             
-            using var micReader = micExists ? new WaveFileReader(microphoneFilePath!) : null;
-            using var sysReader = sysExists ? new WaveFileReader(systemFilePath!) : null;
-
-            var maxSamples = Math.Max(
-                micReader?.SampleCount ?? 0,
-                sysReader?.SampleCount ?? 0
-            );
-
-            var buffer = new byte[4096];
-            long totalSamplesProcessed = 0;
-
-            while (totalSamplesProcessed < maxSamples)
-            {
-                var micBytes = micReader?.Read(buffer, 0, buffer.Length) ?? 0;
-                var sysBytes = sysReader?.Read(buffer, 0, buffer.Length) ?? 0;
-
-                if (micBytes == 0 && sysBytes == 0) break;
-
-                var maxBytes = Math.Max(micBytes, sysBytes);
-                var micData = new byte[maxBytes];
-                var sysData = new byte[maxBytes];
-                
-                if (micBytes > 0) Array.Copy(buffer, micData, micBytes);
-                if (sysBytes > 0) Array.Copy(buffer, sysData, sysBytes);
-
-                var mixedData = MixAudioData(micData, sysData);
-                outputWriter.Write(mixedData, 0, mixedData.Length);
-                
-                totalSamplesProcessed += maxBytes / 4; // 16-bit stereo = 4 bytes per sample
-            }
+            using var firstFileReader = new WaveFileReader(firstFilePath);
+            using var secondFileReader = new WaveFileReader(secondFilePath);
+            
+            if(!firstFileReader.WaveFormat.Equals(secondFileReader.WaveFormat))
+                throw new InvalidOperationException($"Formati audio non compatibili");
+            
+            var mixingProvider = new MixingWaveProvider32();
+            mixingProvider.AddInputStream(firstFileReader);
+            mixingProvider.AddInputStream(secondFileReader);
+            
+            MediaFoundationEncoder.EncodeToMp3(mixingProvider, outputPath);
         }
         catch (Exception ex)
         {
@@ -288,55 +207,17 @@ public class AudioRecorderService : IDisposable
         }
     }
 
-    private byte[] MixAudioData(byte[] micData, byte[] sysData)
-    {
-        var maxLength = Math.Max(micData.Length, sysData.Length);
-        var result = new byte[maxLength];
-
-        for (int i = 0; i < maxLength; i += 2)
-        {
-            short micSample = i < micData.Length ? BitConverter.ToInt16(micData, i) : (short)0;
-            short sysSample = i < sysData.Length ? BitConverter.ToInt16(sysData, i) : (short)0;
-
-            int mixed = (micSample + sysSample) / 2;
-            mixed = Math.Max(short.MinValue, Math.Min(short.MaxValue, mixed));
-
-            var mixedBytes = BitConverter.GetBytes((short)mixed);
-            result[i] = mixedBytes[0];
-            if (i + 1 < maxLength) result[i + 1] = mixedBytes[1];
-        }
-
-        return result;
-    }
-
-    private void CleanupTempFiles()
-    {
-        try
-        {
-            if (!string.IsNullOrEmpty(microphoneFilePath) && File.Exists(microphoneFilePath))
-                File.Delete(microphoneFilePath);
-            if (!string.IsNullOrEmpty(systemFilePath) && File.Exists(systemFilePath))
-                File.Delete(systemFilePath);
-        }
-        catch { }
-
-        microphoneFilePath = null;
-        systemFilePath = null;
-    }
-
     private void CleanupRecording()
     {
-        microphoneCapture?.Dispose();
-        systemCapture?.Dispose();
-        microphoneWriter?.Dispose();
-        systemWriter?.Dispose();
-        
-        CleanupTempFiles();
+        _microphoneCapture?.Dispose();
+        _systemCapture?.Dispose();
+        _microphoneWriter?.Dispose();
+        _systemWriter?.Dispose();
             
-        microphoneCapture = null;
-        systemCapture = null;
-        microphoneWriter = null;
-        systemWriter = null;
+        _microphoneCapture = null;
+        _systemCapture = null;
+        _microphoneWriter = null;
+        _systemWriter = null;
     }
 
     public void Dispose()

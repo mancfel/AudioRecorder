@@ -4,7 +4,7 @@ using AudioRecorder.Services;
 
 namespace AudioRecorder.Views;
 
-public partial class MainWindow : Window
+public partial class MainWindow
 {
     private readonly AudioRecorderService audioService;
     private AudioDeviceService.AudioDevice? selectedDevice;
@@ -83,9 +83,9 @@ public partial class MainWindow : Window
     {
         var saveDialog = new SaveFileDialog
         {
-            Filter = "File WAV|*.wav",
-            DefaultExt = "wav",
-            FileName = $"Registrazione_{DateTime.Now:yyyyMMdd_HHmmss}.wav"
+            Filter = "File Mp3|*.mp3",
+            DefaultExt = "mp3",
+            FileName = $"Registrazione_{DateTime.Now:yyyyMMdd_HHmmss}.mp3"
         };
 
         if (saveDialog.ShowDialog() == true)
