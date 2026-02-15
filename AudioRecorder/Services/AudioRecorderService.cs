@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using NAudio.Wave;
+using NAudio.CoreAudioApi;
 using System.IO;
 
 namespace AudioRecorder.Services;
@@ -31,8 +32,12 @@ public class AudioRecorderService : IDisposable
     }
 
     public event EventHandler<string>? StatusChanged;
+    public event EventHandler<(float MicLevel, float SysLevel)>? LevelsUpdated;
 
-    public void StartRecording(int deviceNumber = 0)
+    private float _currentMicLevel;
+    private float _currentSysLevel;
+
+    public void StartRecording(int micDeviceNumber = 0, string? systemDeviceId = null)
     {
         lock (_lockObject)
         {
@@ -44,8 +49,8 @@ public class AudioRecorderService : IDisposable
                 
                 Directory.CreateDirectory(_currentFilePath);
 
-                SetupSystemCapture();
-                SetupMicrophoneCapture(deviceNumber, _systemCapture.WaveFormat);
+                SetupSystemCapture(systemDeviceId);
+                SetupMicrophoneCapture(micDeviceNumber, _systemCapture!.WaveFormat);
                 
                 _microphoneFilePath = Path.Combine(_currentFilePath, "mic.wav");
                 _systemFilePath = Path.Combine(_currentFilePath, "sys.wav");
@@ -57,7 +62,7 @@ public class AudioRecorderService : IDisposable
                 _timer.Restart();
                 
                 _isRecording = true;
-                StatusChanged?.Invoke(this, $"Registrazione in corso... (dispositivo #{deviceNumber} + sistema)");
+                StatusChanged?.Invoke(this, $"Registrazione in corso... (mic #{micDeviceNumber} + sistema)");
             }
             catch (Exception ex)
             {
@@ -114,12 +119,21 @@ public class AudioRecorderService : IDisposable
         };
     }
 
-    private void SetupSystemCapture()
+    private void SetupSystemCapture(string? systemDeviceId)
     {
-        _systemCapture = new WasapiLoopbackCapture();
+        if (string.IsNullOrEmpty(systemDeviceId))
+        {
+            _systemCapture = new WasapiLoopbackCapture();
+        }
+        else
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            var device = enumerator.GetDevice(systemDeviceId);
+            _systemCapture = new WasapiLoopbackCapture(device);
+        }
         
         // Configurazione esplicita per evitare problemi di formato
-        _systemCapture.ShareMode = NAudio.CoreAudioApi.AudioClientShareMode.Shared;
+        _systemCapture.ShareMode = AudioClientShareMode.Shared;
         
         _systemCapture.DataAvailable += OnSystemDataAvailable;
         _systemCapture.RecordingStopped += (s, e) =>
@@ -136,6 +150,9 @@ public class AudioRecorderService : IDisposable
     {
         if (_microphoneWriter != null && _isRecording)
         {
+            _currentMicLevel = CalculatePeakLevel(e.Buffer, e.BytesRecorded, _microphoneCapture?.WaveFormat);
+            LevelsUpdated?.Invoke(this, (_currentMicLevel, _currentSysLevel));
+
             lock (_microphoneWriter)
             {
                 _microphoneWriter.Write(e.Buffer, 0, e.BytesRecorded);
@@ -147,6 +164,9 @@ public class AudioRecorderService : IDisposable
     {
         if (!_isRecording || _systemWriter == null || _systemCapture == null)
             return;
+
+        _currentSysLevel = CalculatePeakLevel(e.Buffer, e.BytesRecorded, _systemCapture.WaveFormat);
+        LevelsUpdated?.Invoke(this, (_currentMicLevel, _currentSysLevel));
 
         lock (_systemWriter)
         {
@@ -209,6 +229,10 @@ public class AudioRecorderService : IDisposable
 
     private void CleanupRecording()
     {
+        _currentMicLevel = 0;
+        _currentSysLevel = 0;
+        LevelsUpdated?.Invoke(this, (0, 0));
+        
         _microphoneCapture?.Dispose();
         _systemCapture?.Dispose();
         _microphoneWriter?.Dispose();
@@ -218,6 +242,42 @@ public class AudioRecorderService : IDisposable
         _systemCapture = null;
         _microphoneWriter = null;
         _systemWriter = null;
+    }
+
+    private float CalculatePeakLevel(byte[] buffer, int bytesRecorded, WaveFormat? format)
+    {
+        if (format == null || bytesRecorded <= 0) return 0;
+
+        float max = 0;
+        try
+        {
+            if (format.BitsPerSample == 16)
+            {
+                for (int i = 0; i < bytesRecorded; i += 2)
+                {
+                    if (i + 1 >= bytesRecorded) break;
+                    short sample = BitConverter.ToInt16(buffer, i);
+                    float sample32 = Math.Abs(sample / 32768f);
+                    if (sample32 > max) max = sample32;
+                }
+            }
+            else if (format.BitsPerSample == 32)
+            {
+                for (int i = 0; i < bytesRecorded; i += 4)
+                {
+                    if (i + 3 >= bytesRecorded) break;
+                    float sample = BitConverter.ToSingle(buffer, i);
+                    float sample32 = Math.Abs(sample);
+                    if (sample32 > max) max = sample32;
+                }
+            }
+        }
+        catch
+        {
+            // In caso di errori di parsing, ritorna il massimo trovato finora
+        }
+
+        return Math.Min(max, 1.0f);
     }
 
     public void Dispose()

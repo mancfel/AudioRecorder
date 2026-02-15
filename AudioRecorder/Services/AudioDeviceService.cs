@@ -1,4 +1,5 @@
-﻿using NAudio.Wave;
+﻿using NAudio.CoreAudioApi;
+using NAudio.Wave;
 
 namespace AudioRecorder.Services;
 
@@ -11,6 +12,14 @@ public class AudioDeviceService
         public int Channels { get; set; }
         
         public override string ToString() => $"{ProductName} ({Channels} canali)";
+    }
+
+    public class WasapiDevice
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        
+        public override string ToString() => Name;
     }
 
     public static List<AudioDevice> GetInputDevices()
@@ -33,6 +42,30 @@ public class AudioDeviceService
             {
                 // Ignora dispositivi non accessibili
             }
+        }
+
+        return devices;
+    }
+
+    public static List<WasapiDevice> GetOutputDevices()
+    {
+        var devices = new List<WasapiDevice>();
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            var endpoints = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+            foreach (var endpoint in endpoints)
+            {
+                devices.Add(new WasapiDevice
+                {
+                    Id = endpoint.ID,
+                    Name = endpoint.FriendlyName
+                });
+            }
+        }
+        catch
+        {
+            // Ignora errori
         }
 
         return devices;

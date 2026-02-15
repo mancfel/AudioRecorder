@@ -1,19 +1,25 @@
 ﻿using System.Windows;
 using Microsoft.Win32;
 using AudioRecorder.Services;
+using AudioRecorder.Models;
 
 namespace AudioRecorder.Views;
 
 public partial class MainWindow
 {
     private readonly AudioRecorderService audioService;
-    private AudioDeviceService.AudioDevice? selectedDevice;
+    private AudioDeviceService.AudioDevice? selectedMicDevice;
+    private AudioDeviceService.WasapiDevice? selectedSysDevice;
+    private readonly UserSettings userSettings;
 
     public MainWindow()
     {
         InitializeComponent();
         audioService = new AudioRecorderService();
         audioService.StatusChanged += OnStatusChanged;
+        audioService.LevelsUpdated += OnLevelsUpdated;
+        
+        userSettings = SettingsService.LoadSettings();
         
         LoadAudioDevices();
     }
@@ -22,20 +28,51 @@ public partial class MainWindow
     {
         try
         {
-            var devices = AudioDeviceService.GetInputDevices();
+            var micDevices = AudioDeviceService.GetInputDevices();
+            var sysDevices = AudioDeviceService.GetOutputDevices();
             
-            if (!devices.Any())
+            if (!micDevices.Any())
             {
-                StatusLabel.Text = "Nessun dispositivo di input disponibile";
+                StatusLabel.Text = "Nessun dispositivo di input (mic) disponibile";
                 StartButton.IsEnabled = false;
-                return;
+            }
+            else
+            {
+                MicDeviceComboBox.ItemsSource = micDevices;
+                
+                // Cerca di ripristinare l'ultimo dispositivo selezionato
+                var savedMic = micDevices.FirstOrDefault(d => d.ProductName == userSettings.LastMicDeviceName);
+                if (savedMic != null)
+                {
+                    MicDeviceComboBox.SelectedItem = savedMic;
+                    selectedMicDevice = savedMic;
+                }
+                else
+                {
+                    MicDeviceComboBox.SelectedIndex = 0;
+                    selectedMicDevice = micDevices.First();
+                }
             }
 
-            DeviceComboBox.ItemsSource = devices;
-            DeviceComboBox.SelectedIndex = 0;
-            selectedDevice = devices.First();
+            if (sysDevices.Any())
+            {
+                SysDeviceComboBox.ItemsSource = sysDevices;
+
+                // Cerca di ripristinare l'ultimo dispositivo selezionato
+                var savedSys = sysDevices.FirstOrDefault(d => d.Id == userSettings.LastSysDeviceId);
+                if (savedSys != null)
+                {
+                    SysDeviceComboBox.SelectedItem = savedSys;
+                    selectedSysDevice = savedSys;
+                }
+                else
+                {
+                    SysDeviceComboBox.SelectedIndex = 0;
+                    selectedSysDevice = sysDevices.First();
+                }
+            }
             
-            StatusLabel.Text = $"Dispositivo selezionato: {selectedDevice.ProductName}";
+            UpdateStatusLabel();
         }
         catch (Exception ex)
         {
@@ -44,30 +81,51 @@ public partial class MainWindow
         }
     }
 
-    private void DeviceComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private void UpdateStatusLabel()
     {
-        selectedDevice = DeviceComboBox.SelectedItem as AudioDeviceService.AudioDevice;
-        if (selectedDevice != null)
+        var mic = selectedMicDevice?.ProductName ?? "Nessuno";
+        var sys = selectedSysDevice?.Name ?? "Predefinito";
+        StatusLabel.Text = $"Mic: {mic} | Sys: {sys}";
+        StartButton.IsEnabled = selectedMicDevice != null && !audioService.IsRecording;
+    }
+
+    private void MicDeviceComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        selectedMicDevice = MicDeviceComboBox.SelectedItem as AudioDeviceService.AudioDevice;
+        if (selectedMicDevice != null)
         {
-            StatusLabel.Text = $"Dispositivo selezionato: {selectedDevice.ProductName}";
-            StartButton.IsEnabled = !audioService.IsRecording;
+            userSettings.LastMicDeviceName = selectedMicDevice.ProductName;
+            SettingsService.SaveSettings(userSettings);
         }
+        UpdateStatusLabel();
+    }
+
+    private void SysDeviceComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        selectedSysDevice = SysDeviceComboBox.SelectedItem as AudioDeviceService.WasapiDevice;
+        if (selectedSysDevice != null)
+        {
+            userSettings.LastSysDeviceId = selectedSysDevice.Id;
+            SettingsService.SaveSettings(userSettings);
+        }
+        UpdateStatusLabel();
     }
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
     {
-        if (selectedDevice == null)
+        if (selectedMicDevice == null)
         {
-            MessageBox.Show("Seleziona un dispositivo di input prima di iniziare la registrazione.", 
+            MessageBox.Show("Seleziona un microfono prima di iniziare la registrazione.", 
                 "Dispositivo non selezionato", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        audioService.StartRecording(selectedDevice.DeviceNumber);
+        audioService.StartRecording(selectedMicDevice.DeviceNumber, selectedSysDevice?.Id);
         StartButton.IsEnabled = false;
         StopButton.IsEnabled = true;
         SaveButton.IsEnabled = false;
-        DeviceComboBox.IsEnabled = false;
+        MicDeviceComboBox.IsEnabled = false;
+        SysDeviceComboBox.IsEnabled = false;
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -76,7 +134,8 @@ public partial class MainWindow
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = false;
         SaveButton.IsEnabled = true;
-        DeviceComboBox.IsEnabled = true;
+        MicDeviceComboBox.IsEnabled = true;
+        SysDeviceComboBox.IsEnabled = true;
     }
 
     private async void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -109,9 +168,18 @@ public partial class MainWindow
 
     private void OnStatusChanged(object? sender, string status)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(() =>
         {
             StatusLabel.Text = status;
+        });
+    }
+
+    private void OnLevelsUpdated(object? sender, (float MicLevel, float SysLevel) levels)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            MicLevelBar.Value = levels.MicLevel;
+            SysLevelBar.Value = levels.SysLevel;
         });
     }
 
