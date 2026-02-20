@@ -13,11 +13,24 @@ public class AudioRecorderService : IDisposable
     private WaveFileWriter? _systemWriter;
     private readonly Lock _lockObject = new();
     private bool _isRecording;
+    private readonly TranscriptionService _transcriptionService = new();
+    
+    private BufferedWaveProvider? _micWhisperBuffer;
+    private MediaFoundationResampler? _micResampler;
+    private bool _isMicTranscribing;
+
+    private BufferedWaveProvider? _sysWhisperBuffer;
+    private MediaFoundationResampler? _sysResampler;
+    private bool _isSysTranscribing;
+
+    private WaveFormat? _whisperFormat;
     private static readonly string DocumentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     private static readonly string BasePath = Path.Combine(DocumentsPath, "AudioRecorder");
     private string? _currentFilePath;
     private string? _microphoneFilePath;
     private string? _systemFilePath;
+    private string? _transcriptionFilePath;
+    private StreamWriter? _transcriptionWriter;
     private readonly Stopwatch _timer = new();
 
     public bool IsRecording 
@@ -32,12 +45,14 @@ public class AudioRecorderService : IDisposable
     }
 
     public event EventHandler<string>? StatusChanged;
+    public enum TranscriptionSource { Microphone, System }
     public event EventHandler<(float MicLevel, float SysLevel)>? LevelsUpdated;
+    public event EventHandler<(TranscriptionSource Source, string Text)>? TranscriptionReceived;
 
     private float _currentMicLevel;
     private float _currentSysLevel;
 
-    public void StartRecording(int micDeviceNumber = 0, string? systemDeviceId = null)
+    public void StartRecording(int micDeviceNumber, string? systemDeviceId, string? id)
     {
         lock (_lockObject)
         {
@@ -54,12 +69,32 @@ public class AudioRecorderService : IDisposable
                 
                 _microphoneFilePath = Path.Combine(_currentFilePath, "mic.wav");
                 _systemFilePath = Path.Combine(_currentFilePath, "sys.wav");
+                _transcriptionFilePath = Path.Combine(_currentFilePath, "transcript.txt");
+                
                 _microphoneWriter = new WaveFileWriter(_microphoneFilePath, _systemCapture.WaveFormat);
                 _systemWriter = new WaveFileWriter(_systemFilePath, _systemCapture.WaveFormat);
+                _transcriptionWriter = new StreamWriter(_transcriptionFilePath, append: false) { AutoFlush = true };
                 
                 _microphoneCapture?.StartRecording();
                 _systemCapture?.StartRecording();
                 _timer.Restart();
+                _transcriptionService.InitializeAsync();
+                
+                _whisperFormat = new WaveFormat(16000, 16, 1);
+                
+                _micWhisperBuffer = new BufferedWaveProvider(_microphoneCapture.WaveFormat)
+                {
+                    DiscardOnBufferOverflow = true,
+                    BufferDuration = TimeSpan.FromSeconds(10)
+                };
+                _micResampler = new MediaFoundationResampler(_micWhisperBuffer, _whisperFormat);
+
+                _sysWhisperBuffer = new BufferedWaveProvider(_systemCapture.WaveFormat)
+                {
+                    DiscardOnBufferOverflow = true,
+                    BufferDuration = TimeSpan.FromSeconds(10)
+                };
+                _sysResampler = new MediaFoundationResampler(_sysWhisperBuffer, _whisperFormat);
                 
                 _isRecording = true;
                 StatusChanged?.Invoke(this, $"Registrazione in corso... (mic #{micDeviceNumber} + sistema)");
@@ -81,6 +116,11 @@ public class AudioRecorderService : IDisposable
             _microphoneCapture?.StopRecording();
             _systemCapture?.StopRecording();
             _timer.Stop();
+            
+            _transcriptionWriter?.Flush();
+            _transcriptionWriter?.Dispose();
+            _transcriptionWriter = null;
+            
             _isRecording = false;
             StatusChanged?.Invoke(this, "Registrazione fermata - Pronto per salvare");
         }
@@ -95,6 +135,20 @@ public class AudioRecorderService : IDisposable
             throw new InvalidOperationException("Nessuna registrazione del microfono disponibile");
 
         await Task.Run(() => MixAndSaveFiles(filePath, _microphoneFilePath, _systemFilePath));
+
+        // Salva anche la trascrizione se presente
+        if (!string.IsNullOrEmpty(_transcriptionFilePath) && File.Exists(_transcriptionFilePath))
+        {
+            try
+            {
+                string transcriptDest = Path.ChangeExtension(filePath, ".txt");
+                File.Copy(_transcriptionFilePath, transcriptDest, true);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Errore nel salvataggio della trascrizione: {ex.Message}");
+            }
+        }
 
         StatusChanged?.Invoke(this, $"File salvato: {Path.GetFileName(filePath)}");
     }
@@ -157,6 +211,9 @@ public class AudioRecorderService : IDisposable
             {
                 _microphoneWriter.Write(e.Buffer, 0, e.BytesRecorded);
             }
+
+            // Trascrizione Microfono
+            ProcessTranscription(_micWhisperBuffer, _micResampler, TranscriptionSource.Microphone, ref _isMicTranscribing, e.Buffer, e.BytesRecorded);
         }
     }
 
@@ -167,6 +224,9 @@ public class AudioRecorderService : IDisposable
 
         _currentSysLevel = CalculatePeakLevel(e.Buffer, e.BytesRecorded, _systemCapture.WaveFormat);
         LevelsUpdated?.Invoke(this, (_currentMicLevel, _currentSysLevel));
+
+        // Trascrizione Sistema
+        ProcessTranscription(_sysWhisperBuffer, _sysResampler, TranscriptionSource.System, ref _isSysTranscribing, e.Buffer, e.BytesRecorded);
 
         lock (_systemWriter)
         {
@@ -198,6 +258,75 @@ public class AudioRecorderService : IDisposable
         }
     }
     
+    private void ProcessTranscription(BufferedWaveProvider? bufferProvider, MediaFoundationResampler? resampler, TranscriptionSource source, ref bool isTranscribingFlag, byte[] buffer, int bytesRecorded)
+    {
+        if (bufferProvider != null && resampler != null && _whisperFormat != null)
+        {
+            bufferProvider.AddSamples(buffer, 0, bytesRecorded);
+
+            if (!isTranscribingFlag && bufferProvider.BufferedDuration.TotalSeconds >= 3)
+            {
+                isTranscribingFlag = true;
+                // Catturiamo il flag in una variabile locale per poterlo resettare nel task
+                // Nota: in C# i parametri 'ref' non possono essere usati nei lambda async.
+                // Useremo un approccio diverso per gestire lo stato.
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        byte[] resampledBuffer = new byte[16000 * 2 * 3];
+                        int totalBytesRead = 0;
+                        int bytesRead;
+
+                        while ((bytesRead = resampler.Read(resampledBuffer, totalBytesRead, resampledBuffer.Length - totalBytesRead)) > 0)
+                        {
+                            totalBytesRead += bytesRead;
+                            if (totalBytesRead >= resampledBuffer.Length) break;
+                        }
+
+                        if (totalBytesRead > 0)
+                        {
+                            float[] samples = new float[totalBytesRead / 2];
+                            for (int i = 0, j = 0; i < totalBytesRead - 1; i += 2, j++)
+                            {
+                                short sample = BitConverter.ToInt16(resampledBuffer, i);
+                                samples[j] = sample / 32768f;
+                            }
+
+                            if(SettingsService.Settings.TranscriptEnabled)
+                            {
+                                await _transcriptionService.ProcessAudioAsync(samples, text =>
+                                {
+                                    var writer = _transcriptionWriter;
+                                    if (writer != null)
+                                    {
+                                        string tag = source == TranscriptionSource.Microphone ? "Io" : "Altri";
+                                        lock (writer)
+                                        {
+                                            writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {tag}: {text}");
+                                        }
+                                    }
+
+                                    TranscriptionReceived?.Invoke(this, (source, text));
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Errore trascrizione {source}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        // Resettiamo il flag corretto basandoci sulla sorgente
+                        if (source == TranscriptionSource.Microphone) _isMicTranscribing = false;
+                        else _isSysTranscribing = false;
+                    }
+                });
+            }
+        }
+    }
+
     public void MixAndSaveFiles(string outputPath, string firstFilePath, string secondFilePath)
     {
         try
@@ -237,11 +366,19 @@ public class AudioRecorderService : IDisposable
         _systemCapture?.Dispose();
         _microphoneWriter?.Dispose();
         _systemWriter?.Dispose();
+        _micResampler?.Dispose();
+        _sysResampler?.Dispose();
             
         _microphoneCapture = null;
         _systemCapture = null;
         _microphoneWriter = null;
         _systemWriter = null;
+        _transcriptionWriter?.Dispose();
+        _transcriptionWriter = null;
+        _micResampler = null;
+        _sysResampler = null;
+        _isMicTranscribing = false;
+        _isSysTranscribing = false;
     }
 
     private float CalculatePeakLevel(byte[] buffer, int bytesRecorded, WaveFormat? format)
@@ -284,6 +421,7 @@ public class AudioRecorderService : IDisposable
     {
         StopRecording();
         CleanupRecording();
+        _transcriptionService.Dispose();
     }
 }
 

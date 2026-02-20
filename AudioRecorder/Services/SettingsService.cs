@@ -6,13 +6,15 @@ namespace AudioRecorder.Services;
 
 public class SettingsService
 {
+    public static UserSettings Settings => new Lazy<UserSettings>(LoadSettings()).Value;
+    
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "AudioRecorder",
         "settings.json"
     );
 
-    public static UserSettings LoadSettings()
+    private static UserSettings LoadSettings()
     {
         try
         {
