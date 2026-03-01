@@ -2,6 +2,7 @@
 using NAudio.Wave;
 using NAudio.CoreAudioApi;
 using System.IO;
+using System.Windows;
 
 namespace AudioRecorder.Services;
 
@@ -52,6 +53,14 @@ public class AudioRecorderService : IDisposable
     private float _currentMicLevel;
     private float _currentSysLevel;
 
+    private string GetText(string key)
+    {
+        if (Application.Current == null) return key;
+        return Application.Current.Dispatcher.CheckAccess() 
+            ? Application.Current.TryFindResource(key) as string ?? key
+            : Application.Current.Dispatcher.Invoke(() => Application.Current.TryFindResource(key) as string ?? key);
+    }
+
     public void StartRecording(int micDeviceNumber, string? systemDeviceId, string? id)
     {
         lock (_lockObject)
@@ -97,11 +106,11 @@ public class AudioRecorderService : IDisposable
                 _sysResampler = new MediaFoundationResampler(_sysWhisperBuffer, _whisperFormat);
                 
                 _isRecording = true;
-                StatusChanged?.Invoke(this, $"Registrazione in corso... (mic #{micDeviceNumber} + sistema)");
+                StatusChanged?.Invoke(this, string.Format(GetText("RecordingInProgress"), micDeviceNumber));
             }
             catch (Exception ex)
             {
-                StatusChanged?.Invoke(this, $"Errore nell'avvio: {ex.Message}");
+                StatusChanged?.Invoke(this, string.Format(GetText("StartError"), ex.Message));
                 CleanupRecording();
             }
         }
@@ -122,17 +131,17 @@ public class AudioRecorderService : IDisposable
             _transcriptionWriter = null;
             
             _isRecording = false;
-            StatusChanged?.Invoke(this, "Registrazione fermata - Pronto per salvare");
+            StatusChanged?.Invoke(this, GetText("RecordingStoppedReadyToSave"));
         }
     }
 
     public async Task SaveRecordingAsync(string filePath)
     {
         if (_isRecording)
-            throw new InvalidOperationException("Fermare la registrazione prima di salvare");
+            throw new InvalidOperationException(GetText("StopBeforeSaveError"));
 
         if (string.IsNullOrEmpty(_microphoneFilePath) || !File.Exists(_microphoneFilePath))
-            throw new InvalidOperationException("Nessuna registrazione del microfono disponibile");
+            throw new InvalidOperationException(GetText("NoMicRecordingAvailable"));
 
         await Task.Run(() => MixAndSaveFiles(filePath, _microphoneFilePath, _systemFilePath));
 
@@ -146,11 +155,11 @@ public class AudioRecorderService : IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Errore nel salvataggio della trascrizione: {ex.Message}");
+                Debug.WriteLine($"Error saving transcription: {ex.Message}");
             }
         }
 
-        StatusChanged?.Invoke(this, $"File salvato: {Path.GetFileName(filePath)}");
+        StatusChanged?.Invoke(this, string.Format(GetText("FileSaved"), Path.GetFileName(filePath)));
     }
 
     private void SetupMicrophoneCapture(int deviceNumber, WaveFormat waveFormat)
@@ -169,7 +178,7 @@ public class AudioRecorderService : IDisposable
             _microphoneWriter = null;
             _microphoneCapture.Dispose();
             if (e.Exception != null)
-                StatusChanged?.Invoke(this, $"Errore registrazione microfono: {e.Exception.Message}");
+                StatusChanged?.Invoke(this, $"Microphone recording error: {e.Exception.Message}");
         };
     }
 
@@ -186,7 +195,7 @@ public class AudioRecorderService : IDisposable
             _systemCapture = new WasapiLoopbackCapture(device);
         }
         
-        // Configurazione esplicita per evitare problemi di formato
+        // Explicit configuration to avoid format issues
         _systemCapture.ShareMode = AudioClientShareMode.Shared;
         
         _systemCapture.DataAvailable += OnSystemDataAvailable;
@@ -196,7 +205,7 @@ public class AudioRecorderService : IDisposable
             _systemWriter = null;
             _systemCapture.Dispose();
             if (e.Exception != null)
-                StatusChanged?.Invoke(this, $"Errore registrazione sistema: {e.Exception.Message}");
+                StatusChanged?.Invoke(this, $"System recording error: {e.Exception.Message}");
         };
     }
 
@@ -212,7 +221,7 @@ public class AudioRecorderService : IDisposable
                 _microphoneWriter.Write(e.Buffer, 0, e.BytesRecorded);
             }
 
-            // Trascrizione Microfono
+            // Microphone Transcription
             ProcessTranscription(_micWhisperBuffer, _micResampler, TranscriptionSource.Microphone, ref _isMicTranscribing, e.Buffer, e.BytesRecorded);
         }
     }
@@ -225,26 +234,26 @@ public class AudioRecorderService : IDisposable
         _currentSysLevel = CalculatePeakLevel(e.Buffer, e.BytesRecorded, _systemCapture.WaveFormat);
         LevelsUpdated?.Invoke(this, (_currentMicLevel, _currentSysLevel));
 
-        // Trascrizione Sistema
+        // System Transcription
         ProcessTranscription(_sysWhisperBuffer, _sysResampler, TranscriptionSource.System, ref _isSysTranscribing, e.Buffer, e.BytesRecorded);
 
         lock (_systemWriter)
         {
-            // 1) Quanti byte "dovrebbero" esserci nel file secondo il tempo trascorso
+            // 1) How many bytes "should" be in the file according to elapsed time
             var waveFormat = _systemCapture.WaveFormat;
             long expectedBytes = (long)(_timer.Elapsed.TotalSeconds * waveFormat.AverageBytesPerSecond);
 
-            // allinea a BlockAlign (frame intero), evita tagli nel mezzo del campione
+            // align to BlockAlign (whole frame), avoid cuts in the middle of the sample
             expectedBytes -= expectedBytes % waveFormat.BlockAlign;
 
-            // 2) Quanti byte ci sono davvero nel file al momento
+            // 2) How many bytes are actually in the file at the moment
             long actualBytes = _systemWriter.Length;
 
-            // 3) Se siamo indietro, scrivi silenzio (byte=0) per colmare il gap
+            // 3) If we are behind, write silence (byte=0) to fill the gap
             long gapBytes = expectedBytes - actualBytes;
             if (gapBytes > 0)
             {
-                var silenceBuffer = new byte[8192]; // zero-initialized => silenzio
+                var silenceBuffer = new byte[8192]; // zero-initialized => silence
                 while (gapBytes > 0)
                 {
                     int toWrite = (int)Math.Min(silenceBuffer.Length, gapBytes);
@@ -253,7 +262,7 @@ public class AudioRecorderService : IDisposable
                 }
             }
 
-            // 4) Scrivi l'audio reale appena arrivato
+            // 4) Write the real audio just arrived
             _systemWriter.Write(e.Buffer, 0, e.BytesRecorded);
         }
     }
@@ -267,9 +276,9 @@ public class AudioRecorderService : IDisposable
             if (!isTranscribingFlag && bufferProvider.BufferedDuration.TotalSeconds >= 3)
             {
                 isTranscribingFlag = true;
-                // Catturiamo il flag in una variabile locale per poterlo resettare nel task
-                // Nota: in C# i parametri 'ref' non possono essere usati nei lambda async.
-                // Useremo un approccio diverso per gestire lo stato.
+                // Capture the flag in a local variable to reset it in the task
+                // Note: in C# 'ref' parameters cannot be used in async lambdas.
+                // We will use a different approach to manage the state.
                 _ = Task.Run(async () =>
                 {
                     try
@@ -300,7 +309,7 @@ public class AudioRecorderService : IDisposable
                                     var writer = _transcriptionWriter;
                                     if (writer != null)
                                     {
-                                        string tag = source == TranscriptionSource.Microphone ? "Io" : "Altri";
+                                        string tag = source == TranscriptionSource.Microphone ? "Me" : "Others";
                                         lock (writer)
                                         {
                                             writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {tag}: {text}");
@@ -314,11 +323,11 @@ public class AudioRecorderService : IDisposable
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Errore trascrizione {source}: {ex.Message}");
+                        Debug.WriteLine($"Transcription error {source}: {ex.Message}");
                     }
                     finally
                     {
-                        // Resettiamo il flag corretto basandoci sulla sorgente
+                        // Reset the correct flag based on the source
                         if (source == TranscriptionSource.Microphone) _isMicTranscribing = false;
                         else _isSysTranscribing = false;
                     }
@@ -331,18 +340,18 @@ public class AudioRecorderService : IDisposable
     {
         try
         {
-            // Verifica esistenza file
+            // Verify file existence
             var firstFileExists = !string.IsNullOrEmpty(firstFilePath) && File.Exists(firstFilePath);
             var secondFileExists = !string.IsNullOrEmpty(secondFilePath) && File.Exists(secondFilePath);
             
-            if(!firstFileExists) throw new InvalidOperationException($"File audio non trovato {firstFilePath}");
-            if(!secondFileExists) throw new InvalidOperationException($"File audio non trovato {secondFilePath}");
+            if(!firstFileExists) throw new InvalidOperationException($"Audio file not found {firstFilePath}");
+            if(!secondFileExists) throw new InvalidOperationException($"Audio file not found {secondFilePath}");
             
             using var firstFileReader = new WaveFileReader(firstFilePath);
             using var secondFileReader = new WaveFileReader(secondFilePath);
             
             if(!firstFileReader.WaveFormat.Equals(secondFileReader.WaveFormat))
-                throw new InvalidOperationException($"Formati audio non compatibili");
+                throw new InvalidOperationException($"Incompatible audio formats");
             
             var mixingProvider = new MixingWaveProvider32();
             mixingProvider.AddInputStream(firstFileReader);
@@ -352,7 +361,7 @@ public class AudioRecorderService : IDisposable
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Errore durante il mixing: {ex.Message}", ex);
+            throw new InvalidOperationException($"Error during mixing: {ex.Message}", ex);
         }
     }
 
@@ -411,7 +420,7 @@ public class AudioRecorderService : IDisposable
         }
         catch
         {
-            // In caso di errori di parsing, ritorna il massimo trovato finora
+            // In case of parsing errors, return the maximum found so far
         }
 
         return Math.Min(max, 1.0f);

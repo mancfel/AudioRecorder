@@ -1,168 +1,192 @@
 ﻿<Window x:Class="AudioRecorder.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Registratore Audio" 
-        Height="750" 
+        Title="{DynamicResource WindowTitle}"
+        Height="750"
         Width="500"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanMinimize">
-    
+
     <Grid Margin="20">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        
-        <TextBlock Grid.Row="0" 
-                   Text="Registratore Audio - Microfono + Sistema" 
-                   FontSize="16" 
-                   FontWeight="Bold" 
-                   HorizontalAlignment="Center" 
-                   Margin="0,0,0,20"/>
 
-        <StackPanel Grid.Row="1" 
+        <TextBlock Grid.Row="0"
+                   Text="{DynamicResource MainTitle}"
+                   FontSize="16"
+                   FontWeight="Bold"
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,20" />
+
+        <StackPanel Grid.Row="1"
                     Margin="0,0,0,10">
-            <TextBlock Text="Microfono:" FontWeight="Bold" Margin="0,0,0,5"/>
-            <ComboBox Name="MicDeviceComboBox" 
-                      Height="25" 
-                      SelectionChanged="MicDeviceComboBox_SelectionChanged"/>
+            <TextBlock Text="{DynamicResource MicLabel}" FontWeight="Bold" Margin="0,0,0,5" />
+            <ComboBox Name="MicDeviceComboBox"
+                      Height="25"
+                      SelectionChanged="MicDeviceComboBox_SelectionChanged" />
         </StackPanel>
 
         <StackPanel Grid.Row="2"
                     Margin="0,0,0,15">
-            <TextBlock Text="Sistema (Loopback):" FontWeight="Bold" Margin="0,0,0,5"/>
-            <ComboBox Name="SysDeviceComboBox" 
-                      Height="25" 
-                      SelectionChanged="SysDeviceComboBox_SelectionChanged"/>
+            <TextBlock Text="{DynamicResource SysLabel}" FontWeight="Bold" Margin="0,0,0,5" />
+            <ComboBox Name="SysDeviceComboBox"
+                      Height="25"
+                      SelectionChanged="SysDeviceComboBox_SelectionChanged" />
         </StackPanel>
-        
-        <StackPanel Grid.Row="3"
+
+        <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" CornerRadius="5" Padding="10"
+                Background="White" Margin="0,0,0,15">
+            <StackPanel
+                Margin="0,-20,0,15">
+                <CheckBox Name="Transcript"
+                          VerticalAlignment="Bottom"
+                          FontWeight="Bold"
+                          Checked="Transcript_OnChecked"
+                          Unchecked="Transcript_OnUnchecked">
+                    <CheckBox.Content>
+                        <TextBlock Text="{DynamicResource EnableTranscriptionLabel}" Background="White" />
+                    </CheckBox.Content>
+                </CheckBox>
+                <Grid Margin="5,15,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="{DynamicResource WhisperModelLabel}" FontWeight="Bold" Margin="0,0,0,5" />
+                        <ComboBox Name="WhisperModelComboBox"
+                                  Height="25"
+                                  SelectionChanged="WhisperModelComboBox_SelectionChanged" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                        <TextBlock Text="{DynamicResource TranscriptionLanguageLabel}" FontWeight="Bold"
+                                   Margin="0,0,0,5" />
+                        <ComboBox Name="Language" Height="25" SelectionChanged="Language_OnSelectionChanged" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
                     Margin="0,0,0,15">
-            <TextBlock Text="Modello Whisper:" FontWeight="Bold" Margin="0,0,0,5"/>
-            <ComboBox Name="WhisperModelComboBox" 
-                      Height="25" 
-                      SelectionChanged="WhisperModelComboBox_SelectionChanged"/>
-        </StackPanel>
-        
-        <StackPanel Grid.Row="4" 
-                    Orientation="Horizontal" 
-                    HorizontalAlignment="Center" 
-                    Margin="0,0,0,15">
-            <Button Name="StartButton" 
-                    Content="Avvia Registrazione" 
-                    Width="150" 
-                    Height="35" 
+            <Button Name="StartButton"
+                    Content="{DynamicResource StartButton}"
+                    Width="150"
+                    Height="35"
                     Margin="0,0,10,0"
                     Click="StartButton_Click"
-                    Background="#4CAF50" 
-                    Foreground="White" 
-                    FontWeight="Bold"/>
-            
-            <Button Name="StopButton" 
-                    Content="Ferma Registrazione" 
-                    Width="150" 
-                    Height="35" 
+                    Background="#4CAF50"
+                    Foreground="White"
+                    FontWeight="Bold" />
+
+            <Button Name="StopButton"
+                    Content="{DynamicResource StopButton}"
+                    Width="150"
+                    Height="35"
                     Margin="10,0,0,0"
                     Click="StopButton_Click"
                     IsEnabled="False"
-                    Background="#f44336" 
-                    Foreground="White" 
-                    FontWeight="Bold"/>
-            
-            <ComboBox Name="Language" Width="50" Margin="10,0,0,0" SelectionChanged="Language_OnSelectionChanged"/>
-            <CheckBox Name="Transcript" Checked="Transcript_OnChecked" Unchecked="Transcript_OnUnchecked" />
+                    Background="#f44336"
+                    Foreground="White"
+                    FontWeight="Bold" />
         </StackPanel>
-        
-        <Button Grid.Row="5" 
-                Name="SaveButton" 
-                Content="Salva Registrazione" 
-                Width="200" 
-                Height="35" 
-                HorizontalAlignment="Center" 
+
+        <Button Grid.Row="5"
+                Name="SaveButton"
+                Content="{DynamicResource SaveButton}"
+                Width="200"
+                Height="35"
+                HorizontalAlignment="Center"
                 Click="SaveButton_Click"
                 IsEnabled="False"
-                Background="#2196F3" 
-                Foreground="White" 
-                FontWeight="Bold" 
-                Margin="0,0,0,20"/>
-        
-        <Border Grid.Row="6" 
-                BorderBrush="#DDD" 
-                BorderThickness="1" 
-                Padding="10" 
+                Background="#2196F3"
+                Foreground="White"
+                FontWeight="Bold"
+                Margin="0,0,0,20" />
+
+        <Border Grid.Row="6"
+                BorderBrush="#DDD"
+                BorderThickness="1"
+                Padding="10"
                 Background="#F9F9F9"
                 Margin="0,0,0,10">
             <StackPanel>
-                <TextBlock Text="Stato:" FontWeight="Bold" Margin="0,0,0,5"/>
-                <TextBlock Name="StatusLabel" 
-                          Text="Pronto per registrare" 
-                          FontSize="12" 
-                          Foreground="#333"
-                          Margin="0,0,0,10"/>
+                <TextBlock Text="{DynamicResource StatusHeader}" FontWeight="Bold" Margin="0,0,0,5" />
+                <TextBlock Name="StatusLabel"
+                           Text="{DynamicResource ReadyStatus}"
+                           FontSize="12"
+                           Foreground="#333"
+                           Margin="0,0,0,10" />
 
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Margin="0,0,5,0">
-                        <TextBlock Text="Mic Level:" FontSize="10" Margin="0,0,0,2"/>
-                        <ProgressBar Name="MicLevelBar" Height="10" Minimum="0" Maximum="1" Value="0"/>
+                        <TextBlock Text="{DynamicResource MicLevelLabel}" FontSize="10" Margin="0,0,0,2" />
+                        <ProgressBar Name="MicLevelBar" Height="10" Minimum="0" Maximum="1" Value="0" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Margin="5,0,0,0">
-                        <TextBlock Text="System Level:" FontSize="10" Margin="0,0,0,2"/>
-                        <ProgressBar Name="SysLevelBar" Height="10" Minimum="0" Maximum="1" Value="0"/>
+                        <TextBlock Text="{DynamicResource SysLevelLabel}" FontSize="10" Margin="0,0,0,2" />
+                        <ProgressBar Name="SysLevelBar" Height="10" Minimum="0" Maximum="1" Value="0" />
                     </StackPanel>
                 </Grid>
 
-                <TextBlock Text="Trascrizione (Microfono):" FontWeight="Bold" FontSize="10" Margin="0,5,0,2"/>
-                <TextBox Name="MicTranscriptionTextBox" 
-                         Height="60" 
-                         IsReadOnly="True" 
-                         VerticalScrollBarVisibility="Auto" 
+                <TextBlock Text="{DynamicResource MicTranscriptionLabel}" FontWeight="Bold" FontSize="10"
+                           Margin="0,5,0,2" />
+                <TextBox Name="MicTranscriptionTextBox"
+                         Height="60"
+                         IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto"
                          TextWrapping="Wrap"
                          FontSize="11"
                          Background="White"
-                         Margin="0,0,0,5"/>
+                         Margin="0,0,0,5" />
 
-                <TextBlock Text="Trascrizione (Sistema):" FontWeight="Bold" FontSize="10" Margin="0,5,0,2"/>
-                <TextBox Name="SysTranscriptionTextBox" 
-                         Height="60" 
-                         IsReadOnly="True" 
-                         VerticalScrollBarVisibility="Auto" 
+                <TextBlock Text="{DynamicResource SysTranscriptionLabel}" FontWeight="Bold" FontSize="10"
+                           Margin="0,5,0,2" />
+                <TextBox Name="SysTranscriptionTextBox"
+                         Height="60"
+                         IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto"
                          TextWrapping="Wrap"
                          FontSize="11"
-                         Background="White"/>
+                         Background="White" />
             </StackPanel>
         </Border>
-        
-        <StackPanel Grid.Row="7" 
-                    VerticalAlignment="Bottom" 
+
+        <StackPanel Grid.Row="7"
+                    VerticalAlignment="Bottom"
                     Margin="0,20,0,0">
-            <TextBlock Text="Istruzioni:" FontWeight="Bold" FontSize="12" Margin="0,0,0,5"/>
-            <TextBlock Text="• Seleziona i dispositivi di input dal menu a tendina" 
-                       FontSize="10" 
-                       TextWrapping="Wrap" 
-                       Margin="0,0,0,2"/>
-            <TextBlock Text="• Clicca 'Avvia' per iniziare a registrare microfono e audio di sistema" 
-                       FontSize="10" 
-                       TextWrapping="Wrap" 
-                       Margin="0,0,0,2"/>
-            <TextBlock Text="• Clicca 'Ferma' per terminare la registrazione" 
-                       FontSize="10" 
-                       TextWrapping="Wrap" 
-                       Margin="0,0,0,2"/>
-            <TextBlock Text="• Clicca 'Salva' per salvare il file WAV mixato" 
-                       FontSize="10" 
-                       TextWrapping="Wrap"/>
+            <TextBlock Text="{DynamicResource InstructionsHeader}" FontWeight="Bold" FontSize="12" Margin="0,0,0,5" />
+            <TextBlock Text="{DynamicResource Instruction1}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,2" />
+            <TextBlock Text="{DynamicResource Instruction2}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,2" />
+            <TextBlock Text="{DynamicResource Instruction3}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,2" />
+            <TextBlock Text="{DynamicResource Instruction4}"
+                       FontSize="10"
+                       TextWrapping="Wrap" />
         </StackPanel>
     </Grid>
 </Window>

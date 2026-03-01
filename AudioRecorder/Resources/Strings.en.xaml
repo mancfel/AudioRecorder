@@ -1,0 +1,48 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:system="clr-namespace:System;assembly=mscorlib">
+    <system:String x:Key="WindowTitle">Audio Recorder</system:String>
+    <system:String x:Key="MainTitle">Audio Recorder - Microphone + System</system:String>
+    <system:String x:Key="MicLabel">Microphone:</system:String>
+    <system:String x:Key="SysLabel">System (Loopback):</system:String>
+    <system:String x:Key="WhisperModelLabel">Model:</system:String>
+    <system:String x:Key="StartButton">Start Recording</system:String>
+    <system:String x:Key="StopButton">Stop Recording</system:String>
+    <system:String x:Key="SaveButton">Save Recording</system:String>
+    <system:String x:Key="StatusHeaderText">Status:</system:String>
+    <system:String x:Key="ReadyStatus">Ready to record</system:String>
+    <system:String x:Key="MicLevelLabel">Mic Level:</system:String>
+    <system:String x:Key="SysLevelLabel">System Level:</system:String>
+    <system:String x:Key="MicTranscriptionLabel">Transcription (Microphone):</system:String>
+    <system:String x:Key="SysTranscriptionLabel">Transcription (System):</system:String>
+    <system:String x:Key="InstructionsHeader">Instructions:</system:String>
+    <system:String x:Key="Instruction1">• Select the input devices from the dropdown menu</system:String>
+    <system:String x:Key="Instruction2">• Click 'Start' to begin recording microphone and system audio</system:String>
+    <system:String x:Key="Instruction3">• Click 'Stop' to end the recording</system:String>
+    <system:String x:Key="Instruction4">• Click 'Save' to save the mixed MP3 file</system:String>
+    
+    <!-- Code-behind and Status strings -->
+    <system:String x:Key="SelectMicWarning">Select a microphone before starting the recording.</system:String>
+    <system:String x:Key="DeviceNotSelectedTitle">Device not selected</system:String>
+    <system:String x:Key="Mp3Filter">Mp3 File|*.mp3</system:String>
+    <system:String x:Key="RecordingFilenamePrefix">Recording_</system:String>
+    <system:String x:Key="SaveError">Error saving: </system:String>
+    <system:String x:Key="ErrorTitle">Error</system:String>
+    <system:String x:Key="NoWhisperModelsFound">No Whisper models (.bin) found in AppData/AudioRecorder</system:String>
+    <system:String x:Key="ModelLoadError">Error loading models: </system:String>
+    <system:String x:Key="NoMicAvailable">No input device (mic) available</system:String>
+    <system:String x:Key="ErrorLoadingDevices">Error loading devices: </system:String>
+    <system:String x:Key="None">None</system:String>
+    <system:String x:Key="Default">Default</system:String>
+    <system:String x:Key="MicSysStatus">Mic: {0} | Sys: {1}</system:String>
+    <system:String x:Key="RecordingInProgress">Recording in progress... (mic #{0} + system)</system:String>
+    <system:String x:Key="StartError">Error starting: {0}</system:String>
+    <system:String x:Key="RecordingStoppedReadyToSave">Recording stopped - Ready to save</system:String>
+    <system:String x:Key="FileSaved">File saved: {0}</system:String>
+    <system:String x:Key="StopBeforeSaveError">Stop the recording before saving</system:String>
+    <system:String x:Key="NoMicRecordingAvailable">No microphone recording available</system:String>
+    <system:String x:Key="WhisperModelNotFound">Whisper model not found. Please download the .bin file to AppData/AudioRecorder</system:String>
+    <system:String x:Key="ChannelsFormat">{0} ({1} channels)</system:String>
+    <system:String x:Key="TranscriptionLanguageLabel">Language:</system:String>
+    <system:String x:Key="EnableTranscriptionLabel">Enable Whisper Transcription</system:String>
+</ResourceDictionary>

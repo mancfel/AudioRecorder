@@ -2,6 +2,7 @@
 using AudioRecorder.Models;
 using Whisper.net;
 using Whisper.net.Ggml;
+using System.Windows;
 
 namespace AudioRecorder.Services;
 
@@ -28,7 +29,7 @@ public class TranscriptionService : IDisposable
 
     public void InitializeAsync()
     {
-        // Se il modello nel frattempo è cambiato nelle impostazioni, dobbiamo reinizializzare
+        // If the model has changed in the settings in the meantime, we need to reinitialize
         string currentModelPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "AudioRecorder",
@@ -54,9 +55,17 @@ public class TranscriptionService : IDisposable
             .WithPrintTimestamps()
             .Build();
         
-        // Aggiorniamo il path del modello attualmente caricato
+        // Update the path of the currently loaded model
         modelPath = currentModelPath;
         isInitialized = true;
+    }
+
+    private string GetText(string key)
+    {
+        if (Application.Current == null) return key;
+        return Application.Current.Dispatcher.CheckAccess() 
+            ? Application.Current.TryFindResource(key) as string ?? key
+            : Application.Current.Dispatcher.Invoke(() => Application.Current.TryFindResource(key) as string ?? key);
     }
 
     private void EnsureModelExists(string path)
@@ -69,9 +78,9 @@ public class TranscriptionService : IDisposable
                 Directory.CreateDirectory(directory);
             }
 
-            // Caricamento manuale rimosso per instabilità API, l'utente deve fornire il modello
-            // o implementeremo un downloader più robusto in seguito.
-            throw new FileNotFoundException("Modello Whisper non trovato. Scaricare il file .bin in AppData/AudioRecorder", path);
+            // Manual loading removed due to API instability, the user must provide the model
+            // or we will implement a more robust downloader later.
+            throw new FileNotFoundException(GetText("WhisperModelNotFound"), path);
         }
     }
 

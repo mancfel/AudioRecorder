@@ -26,7 +26,8 @@ public class SettingsService
         }
         catch
         {
-            // In caso di errore, restituisci impostazioni predefinite
+            // In case of error, return default settings
+            return new UserSettings();
         }
         return new UserSettings();
     }
@@ -46,7 +47,7 @@ public class SettingsService
         }
         catch
         {
-            // Ignora errori di salvataggio
+            // Ignore saving errors
         }
     }
 }

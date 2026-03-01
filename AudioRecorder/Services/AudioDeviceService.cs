@@ -1,5 +1,6 @@
 ﻿using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using System.Windows;
 
 namespace AudioRecorder.Services;
 
@@ -11,7 +12,18 @@ public class AudioDeviceService
         public string ProductName { get; set; } = string.Empty;
         public int Channels { get; set; }
         
-        public override string ToString() => $"{ProductName} ({Channels} canali)";
+        public override string ToString()
+        {
+            var key = "ChannelsFormat";
+            var format = "{0} ({1} channels)";
+            if (Application.Current != null)
+            {
+                format = Application.Current.Dispatcher.CheckAccess()
+                    ? Application.Current.TryFindResource(key) as string ?? format
+                    : Application.Current.Dispatcher.Invoke(() => Application.Current.TryFindResource(key) as string ?? format);
+            }
+            return string.Format(format, ProductName, Channels);
+        }
     }
 
     public class WasapiDevice
@@ -40,7 +52,7 @@ public class AudioDeviceService
             }
             catch
             {
-                // Ignora dispositivi non accessibili
+                // Ignore inaccessible devices
             }
         }
 
@@ -65,7 +77,7 @@ public class AudioDeviceService
         }
         catch
         {
-            // Ignora errori
+            // Ignore errors
         }
 
         return devices;

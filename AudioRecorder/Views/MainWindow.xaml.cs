@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.Globalization;
+using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using AudioRecorder.Services;
@@ -23,6 +24,8 @@ public partial class MainWindow
         audioService.TranscriptionReceived += OnTranscriptionReceived;
         
         userSettings = SettingsService.Settings;
+        SetLanguage(userSettings.Language);
+        
         Language.ItemsSource = new List<string> { "en", "it" };
         Language.SelectedItem = userSettings.Language;
         Transcript.IsChecked = userSettings.TranscriptEnabled;
@@ -30,6 +33,31 @@ public partial class MainWindow
         LoadAudioDevices();
         LoadWhisperModels();
     }
+
+    private void SetLanguage(string lang)
+    {
+        var dict = new ResourceDictionary();
+        try
+        {
+            dict.Source = new Uri($"Resources/Strings.{lang}.xaml", UriKind.Relative);
+
+            var oldDict = Application.Current.Resources.MergedDictionaries
+                .FirstOrDefault(d => d.Source != null && d.Source.OriginalString.Contains("Strings."));
+
+            if (oldDict != null)
+            {
+                Application.Current.Resources.MergedDictionaries.Remove(oldDict);
+            }
+
+            Application.Current.Resources.MergedDictionaries.Add(dict);
+        }
+        catch
+        {
+            // Fallback if resource not found
+        }
+    }
+
+    private string GetText(string key) => Application.Current.TryFindResource(key) as string ?? key;
 
     private void LoadWhisperModels()
     {
@@ -66,12 +94,12 @@ public partial class MainWindow
             }
             else
             {
-                StatusLabel.Text = "Nessun modello Whisper (.bin) trovato in AppData/AudioRecorder";
+                StatusLabel.Text = GetText("NoWhisperModelsFound");
             }
         }
         catch (Exception ex)
         {
-            StatusLabel.Text = $"Errore nel caricamento modelli: {ex.Message}";
+            StatusLabel.Text = $"{GetText("ModelLoadError")}{ex.Message}";
         }
     }
 
@@ -82,9 +110,9 @@ public partial class MainWindow
             userSettings.WhisperModel = selectedModel;
             SettingsService.SaveSettings(userSettings);
             
-            // Reinizializziamo il servizio di trascrizione se necessario
-            // In questo caso, AudioRecorderService crea un nuovo TranscriptionService
-            // ogni volta che avvia la registrazione, leggendo le impostazioni correnti.
+            // Reinitialize the transcription service if necessary
+            // In this case, AudioRecorderService creates a new TranscriptionService
+            // every time recording starts, reading the current settings.
         }
     }
 
@@ -97,14 +125,14 @@ public partial class MainWindow
             
             if (!micDevices.Any())
             {
-                StatusLabel.Text = "Nessun dispositivo di input (mic) disponibile";
+                StatusLabel.Text = GetText("NoMicAvailable");
                 StartButton.IsEnabled = false;
             }
             else
             {
                 MicDeviceComboBox.ItemsSource = micDevices;
                 
-                // Cerca di ripristinare l'ultimo dispositivo selezionato
+                // Try to restore the last selected device
                 var savedMic = micDevices.FirstOrDefault(d => d.ProductName == userSettings.LastMicDeviceName);
                 if (savedMic != null)
                 {
@@ -122,7 +150,7 @@ public partial class MainWindow
             {
                 SysDeviceComboBox.ItemsSource = sysDevices;
 
-                // Cerca di ripristinare l'ultimo dispositivo selezionato
+                // Try to restore the last selected device
                 var savedSys = sysDevices.FirstOrDefault(d => d.Id == userSettings.LastSysDeviceId);
                 if (savedSys != null)
                 {
@@ -140,16 +168,16 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            StatusLabel.Text = $"Errore nel caricamento dispositivi: {ex.Message}";
+            StatusLabel.Text = $"{GetText("ErrorLoadingDevices")}{ex.Message}";
             StartButton.IsEnabled = false;
         }
     }
 
     private void UpdateStatusLabel()
     {
-        var mic = selectedMicDevice?.ProductName ?? "Nessuno";
-        var sys = selectedSysDevice?.Name ?? "Predefinito";
-        StatusLabel.Text = $"Mic: {mic} | Sys: {sys}";
+        var mic = selectedMicDevice?.ProductName ?? GetText("None");
+        var sys = selectedSysDevice?.Name ?? GetText("Default");
+        StatusLabel.Text = string.Format(GetText("MicSysStatus"), mic, sys);
         StartButton.IsEnabled = selectedMicDevice != null && !audioService.IsRecording;
     }
 
@@ -179,8 +207,8 @@ public partial class MainWindow
     {
         if (selectedMicDevice == null)
         {
-            MessageBox.Show("Seleziona un microfono prima di iniziare la registrazione.", 
-                "Dispositivo non selezionato", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(GetText("SelectMicWarning"), 
+                GetText("DeviceNotSelectedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -208,9 +236,9 @@ public partial class MainWindow
     {
         var saveDialog = new SaveFileDialog
         {
-            Filter = "File Mp3|*.mp3",
+            Filter = GetText("Mp3Filter"),
             DefaultExt = "mp3",
-            FileName = $"Registrazione_{DateTime.Now:yyyyMMdd_HHmmss}.mp3"
+            FileName = $"{GetText("RecordingFilenamePrefix")}{DateTime.Now:yyyyMMdd_HHmmss}.mp3"
         };
 
         if (saveDialog.ShowDialog() == true)
@@ -222,7 +250,7 @@ public partial class MainWindow
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Errore nel salvataggio: {ex.Message}", "Errore", 
+                MessageBox.Show($"{GetText("SaveError")}{ex.Message}", GetText("ErrorTitle"), 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -271,8 +299,14 @@ public partial class MainWindow
     private void Language_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if(Language.SelectedValue is null) return;
-        userSettings.Language = Language.SelectedValue.ToString();
+        string lang = Language.SelectedValue.ToString()!;
+        
+        userSettings.Language = lang;
         SettingsService.SaveSettings(userSettings);
+        SetLanguage(lang);
+        
+        // Refresh audio devices to update ToString() representation
+        LoadAudioDevices();
     }
 
     private void Transcript_OnChecked(object sender, RoutedEventArgs e)

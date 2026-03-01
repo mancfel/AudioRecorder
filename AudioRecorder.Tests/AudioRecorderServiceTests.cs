@@ -23,7 +23,7 @@ public class AudioRecorderServiceTests
     {
         if (!File.Exists("mic.wav"))
         {
-            throw new FileNotFoundException("File mic.wav non trovato per il test.");
+            throw new FileNotFoundException("File mic.wav not found for testing.");
         }
 
         using var reader = new WaveFileReader("mic.wav");
@@ -50,11 +50,11 @@ public class AudioRecorderServiceTests
         await transcriptionService.ProcessAudioAsync(samplesList.ToArray(), text => 
         {
             fullText += text + " ";
-            Console.WriteLine($"[DEBUG_LOG] Mic Parziale: {text}");
+            Console.WriteLine($"[DEBUG_LOG] Mic Partial: {text}");
         });
         
-        Console.WriteLine($"[DEBUG_LOG] Mic Trascrizione Completa: {fullText}");
-        Assert.False(string.IsNullOrWhiteSpace(fullText), "La trascrizione del microfono non dovrebbe essere vuota.");
+        Console.WriteLine($"[DEBUG_LOG] Mic Complete Transcription: {fullText}");
+        Assert.False(string.IsNullOrWhiteSpace(fullText), "Microphone transcription should not be empty.");
     }
 
     [Fact]
@@ -62,13 +62,13 @@ public class AudioRecorderServiceTests
     {
         if (!File.Exists("sys.wav"))
         {
-            throw new FileNotFoundException("File sys.wav non trovato per il test.");
+            throw new FileNotFoundException("File sys.wav not found for testing.");
         }
 
         using var reader = new WaveFileReader("sys.wav");
         var whisperFormat = new WaveFormat(16000, 16, 1);
         
-        // Utilizziamo il resampler per portare l'audio al formato Whisper
+        // Use the resampler to bring the audio to the Whisper format
         using var resampler = new MediaFoundationResampler(reader, whisperFormat);
         
         using var transcriptionService = new TranscriptionService();
@@ -76,12 +76,12 @@ public class AudioRecorderServiceTests
         transcriptionService.TranscriptionReceived += (s, text) =>
         {
             fullText += text + " ";
-            Console.WriteLine($"[DEBUG_LOG] Parziale: {text}");
+            Console.WriteLine($"[DEBUG_LOG] Partial: {text}");
         };
 
-        // Prepariamo i campioni float per Whisper
+        // Prepare float samples for Whisper
         var samplesList = new List<float>();
-        byte[] buffer = new byte[32000]; // ~1 secondo a 16kHz
+        byte[] buffer = new byte[32000]; // ~1 second at 16kHz
         int bytesRead;
         
         while ((bytesRead = resampler.Read(buffer, 0, buffer.Length)) > 0)
@@ -95,7 +95,7 @@ public class AudioRecorderServiceTests
 
         await transcriptionService.ProcessAudioAsync(samplesList.ToArray());
         
-        Console.WriteLine($"[DEBUG_LOG] Trascrizione Completa: {fullText}");
-        Assert.False(string.IsNullOrWhiteSpace(fullText), "La trascrizione non dovrebbe essere vuota.");
+        Console.WriteLine($"[DEBUG_LOG] Complete Transcription: {fullText}");
+        Assert.False(string.IsNullOrWhiteSpace(fullText), "Transcription should not be empty.");
     }
 }
