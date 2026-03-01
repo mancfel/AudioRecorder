@@ -312,12 +312,16 @@ public partial class MainWindow
     private void Transcript_OnChecked(object sender, RoutedEventArgs e)
     {
         userSettings.TranscriptEnabled = true;
+        WhisperModelComboBox.IsEnabled = true;
+        Language.IsEnabled = true;
         SettingsService.SaveSettings(userSettings);
     }
 
     private void Transcript_OnUnchecked(object sender, RoutedEventArgs e)
     {
         userSettings.TranscriptEnabled = false;
+        WhisperModelComboBox.IsEnabled = false;
+        Language.IsEnabled = false;
         SettingsService.SaveSettings(userSettings);
     }
 }

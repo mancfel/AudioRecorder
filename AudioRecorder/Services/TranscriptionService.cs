@@ -1,95 +1,103 @@
 ﻿using System.IO;
+using System.Windows;
 using AudioRecorder.Models;
 using Whisper.net;
-using Whisper.net.Ggml;
-using System.Windows;
 
 namespace AudioRecorder.Services;
 
 public class TranscriptionService : IDisposable
 {
-    private WhisperFactory? whisperFactory;
-    private WhisperProcessor? processor;
-    private string modelPath;
-    private bool isInitialized;
-    private readonly UserSettings userSettings;
-    private readonly SemaphoreSlim semaphore = new(1, 1);
-
-    public event EventHandler<string>? TranscriptionReceived;
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private readonly UserSettings _userSettings;
+    private bool _isInitialized;
+    private string _modelPath;
+    private WhisperProcessor? _processor;
+    private WhisperFactory? _whisperFactory;
 
     public TranscriptionService()
     {
-        userSettings = SettingsService.Settings;
-        modelPath = Path.Combine(
+        _userSettings = SettingsService.Settings;
+        _modelPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "AudioRecorder",
-            userSettings.WhisperModel
+            _userSettings.WhisperModel
         );
     }
+
+    public void Dispose()
+    {
+        _semaphore.Dispose();
+        DisposeInternal();
+    }
+
+    public event EventHandler<string>? TranscriptionReceived;
 
     public void InitializeAsync()
     {
         // If the model has changed in the settings in the meantime, we need to reinitialize
-        string currentModelPath = Path.Combine(
+        var currentModelPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "AudioRecorder",
-            userSettings.WhisperModel
+            _userSettings.WhisperModel
         );
 
-        switch (isInitialized)
+        switch (_isInitialized)
         {
-            case true when currentModelPath == modelPath:
-                processor!.ChangeLanguage(userSettings.Language);
+            case true when currentModelPath == _modelPath:
+                _processor!.ChangeLanguage(_userSettings.Language);
                 return;
             case true:
                 DisposeInternal();
-                isInitialized = false;
+                _isInitialized = false;
                 break;
         }
 
         EnsureModelExists(currentModelPath);
 
-        whisperFactory = WhisperFactory.FromPath(currentModelPath);
-        processor = whisperFactory.CreateBuilder()
-            .WithLanguage(userSettings.Language)
+        _whisperFactory = WhisperFactory.FromPath(currentModelPath);
+        _processor = _whisperFactory.CreateBuilder()
+            .WithLanguage(_userSettings.Language)
             .WithPrintTimestamps()
+            .WithNoSpeechThreshold(0.6f)
             .Build();
-        
+
         // Update the path of the currently loaded model
-        modelPath = currentModelPath;
-        isInitialized = true;
+        _modelPath = currentModelPath;
+        _isInitialized = true;
     }
 
     private string GetText(string key)
     {
         if (Application.Current == null) return key;
-        return Application.Current.Dispatcher.CheckAccess() 
+        return Application.Current.Dispatcher.CheckAccess()
             ? Application.Current.TryFindResource(key) as string ?? key
             : Application.Current.Dispatcher.Invoke(() => Application.Current.TryFindResource(key) as string ?? key);
     }
 
     private void EnsureModelExists(string path)
     {
-        if (!File.Exists(path))
-        {
-            string? directory = Path.GetDirectoryName(path);
-            if (directory != null && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
+        if (File.Exists(path)) return;
+        
+        var directory = Path.GetDirectoryName(path);
+        if (directory != null && !Directory.Exists(directory)) Directory.CreateDirectory(directory);
 
-            // Manual loading removed due to API instability, the user must provide the model
-            // or we will implement a more robust downloader later.
-            throw new FileNotFoundException(GetText("WhisperModelNotFound"), path);
-        }
+        // Manual loading removed due to API instability, the user must provide the model
+        // or we will implement a more robust downloader later.
+        throw new FileNotFoundException(GetText("WhisperModelNotFound"), path);
     }
 
     public async Task ProcessAudioAsync(float[] samples, Action<string>? onSegmentReceived = null)
     {
-        await semaphore.WaitAsync();
+        // Simple peak check to skip silent segments and avoid hallucinations
+        var maxPeak = samples.Select(Math.Abs).Prepend(0f).Max();
+
+        // Threshold for silence detection (can be adjusted)
+        if (maxPeak < 0.005f) return;
+
+        await _semaphore.WaitAsync();
         try
         {
-            await foreach (var result in processor!.ProcessAsync(samples))
+            await foreach (var result in _processor!.ProcessAsync(samples))
             {
                 onSegmentReceived?.Invoke(result.Text);
                 TranscriptionReceived?.Invoke(this, result.Text);
@@ -97,21 +105,15 @@ public class TranscriptionService : IDisposable
         }
         finally
         {
-            semaphore.Release();
+            _semaphore.Release();
         }
-    }
-
-    public void Dispose()
-    {
-        semaphore.Dispose();
-        DisposeInternal();
     }
 
     private void DisposeInternal()
     {
-        processor?.Dispose();
-        whisperFactory?.Dispose();
-        processor = null;
-        whisperFactory = null;
+        _processor?.Dispose();
+        _whisperFactory?.Dispose();
+        _processor = null;
+        _whisperFactory = null;
     }
 }

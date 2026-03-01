@@ -144,8 +144,8 @@ public class AudioRecorderService : IDisposable
             throw new InvalidOperationException(GetText("NoMicRecordingAvailable"));
 
         await Task.Run(() => MixAndSaveFiles(filePath, _microphoneFilePath, _systemFilePath));
-
-        // Salva anche la trascrizione se presente
+        
+        // Also save the transcription if present
         if (!string.IsNullOrEmpty(_transcriptionFilePath) && File.Exists(_transcriptionFilePath))
         {
             try

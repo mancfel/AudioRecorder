@@ -47,7 +47,7 @@
 
 ## Applied Fixes
 - **WASAPI Synchronization**: Resolved through silence injection based on elapsed time to avoid drift
-- **Format Compatibility**: Automatic handling of different sample rates through resampling
 - **AI Transcription**: Integrated local Whisper models for offline transcription
 - **Real-time Monitoring**: Added visual peak level indicators for both audio streams
 - **BadDeviceId error resolution** through explicit device selection
+- **Silence Filtering**: Energy-based thresholding (0.005f peak) and `WithNoSpeechThreshold(0.6f)` to prevent "Thank you" hallucinations during silent periods.
