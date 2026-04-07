@@ -5,6 +5,7 @@ using Microsoft.Win32;
 using AudioRecorder.Services;
 using AudioRecorder.Models;
 using System.IO;
+using Whisper.net.Logger;
 
 namespace AudioRecorder.Views;
 
@@ -26,12 +27,17 @@ public partial class MainWindow
         userSettings = SettingsService.Settings;
         SetLanguage(userSettings.Language);
         
-        Language.ItemsSource = new List<string> { "en", "it" };
-        Language.SelectedItem = userSettings.Language;
+        UiLanguageComboBox.ItemsSource = new List<string> { "en", "it" };
+        UiLanguageComboBox.SelectedItem = userSettings.Language;
+        
+        TranscriptLanguageComboBox.ItemsSource = new List<string> { "en", "it" };
+        TranscriptLanguageComboBox.SelectedItem = userSettings.TranscriptLanguage;
+        
         Transcript.IsChecked = userSettings.TranscriptEnabled;
         
         LoadAudioDevices();
         LoadWhisperModels();
+        LogProvider.AddLogger((level, s) => File.AppendAllLines("Log.log", [$"{level}: {s}"]));
     }
 
     private void SetLanguage(string lang)
@@ -214,7 +220,7 @@ public partial class MainWindow
 
         MicTranscriptionTextBox.Clear();
         SysTranscriptionTextBox.Clear();
-        audioService.StartRecording(selectedMicDevice.DeviceNumber, selectedSysDevice?.Id, userSettings.Language);
+        audioService.StartRecording(selectedMicDevice.DeviceNumber, selectedSysDevice?.Id);
         StartButton.IsEnabled = false;
         StopButton.IsEnabled = true;
         SaveButton.IsEnabled = false;
@@ -296,10 +302,10 @@ public partial class MainWindow
         base.OnClosed(e);
     }
 
-    private void Language_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void UILanguage_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if(Language.SelectedValue is null) return;
-        string lang = Language.SelectedValue.ToString()!;
+        if(UiLanguageComboBox.SelectedValue is null) return;
+        string lang = UiLanguageComboBox.SelectedValue.ToString()!;
         
         userSettings.Language = lang;
         SettingsService.SaveSettings(userSettings);
@@ -309,11 +315,20 @@ public partial class MainWindow
         LoadAudioDevices();
     }
 
+    private void TranscriptLanguage_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if(TranscriptLanguageComboBox.SelectedValue is null) return;
+        string lang = TranscriptLanguageComboBox.SelectedValue.ToString()!;
+        
+        userSettings.TranscriptLanguage = lang;
+        SettingsService.SaveSettings(userSettings);
+    }
+
     private void Transcript_OnChecked(object sender, RoutedEventArgs e)
     {
         userSettings.TranscriptEnabled = true;
         WhisperModelComboBox.IsEnabled = true;
-        Language.IsEnabled = true;
+        TranscriptLanguageComboBox.IsEnabled = true;
         SettingsService.SaveSettings(userSettings);
     }
 
@@ -321,7 +336,7 @@ public partial class MainWindow
     {
         userSettings.TranscriptEnabled = false;
         WhisperModelComboBox.IsEnabled = false;
-        Language.IsEnabled = false;
+        TranscriptLanguageComboBox.IsEnabled = false;
         SettingsService.SaveSettings(userSettings);
     }
 }

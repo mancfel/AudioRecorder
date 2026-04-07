@@ -2,7 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:system="clr-namespace:System;assembly=mscorlib">
     <system:String x:Key="WindowTitle">Registratore Audio</system:String>
-    <system:String x:Key="MainTitle">Registratore Audio - Microfono + Sistema</system:String>
+    <system:String x:Key="MainTitle">Registratore Audio</system:String>
     <system:String x:Key="MicLabel">Microfono:</system:String>
     <system:String x:Key="SysLabel">Sistema (Loopback):</system:String>
     <system:String x:Key="WhisperModelLabel">Modello:</system:String>
@@ -44,5 +44,6 @@
     <system:String x:Key="WhisperModelNotFound">Modello Whisper non trovato. Scaricare il file .bin in AppData/AudioRecorder</system:String>
     <system:String x:Key="ChannelsFormat">{0} ({1} canali)</system:String>
     <system:String x:Key="TranscriptionLanguageLabel">Lingua:</system:String>
+    <system:String x:Key="UiLanguageLabel">Lingua:</system:String>
     <system:String x:Key="EnableTranscriptionLabel">Abilita Trascrizione con Whisper</system:String>
 </ResourceDictionary>

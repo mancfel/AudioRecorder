@@ -61,7 +61,7 @@ public class AudioRecorderService : IDisposable
             : Application.Current.Dispatcher.Invoke(() => Application.Current.TryFindResource(key) as string ?? key);
     }
 
-    public void StartRecording(int micDeviceNumber, string? systemDeviceId, string? id)
+    public void StartRecording(int micDeviceNumber, string? systemDeviceId)
     {
         lock (_lockObject)
         {
@@ -87,7 +87,9 @@ public class AudioRecorderService : IDisposable
                 _microphoneCapture?.StartRecording();
                 _systemCapture?.StartRecording();
                 _timer.Restart();
-                _transcriptionService.InitializeAsync();
+                
+                if(SettingsService.Settings.TranscriptEnabled)
+                    _transcriptionService.InitializeAsync();
                 
                 _whisperFormat = new WaveFormat(16000, 16, 1);
                 
@@ -176,7 +178,7 @@ public class AudioRecorderService : IDisposable
         {
             _microphoneWriter?.Dispose();
             _microphoneWriter = null;
-            _microphoneCapture.Dispose();
+            _microphoneCapture?.Dispose();
             if (e.Exception != null)
                 StatusChanged?.Invoke(this, $"Microphone recording error: {e.Exception.Message}");
         };
@@ -201,9 +203,9 @@ public class AudioRecorderService : IDisposable
         _systemCapture.DataAvailable += OnSystemDataAvailable;
         _systemCapture.RecordingStopped += (s, e) =>
         {
-            _systemWriter.Dispose();
+            _systemWriter?.Dispose();
             _systemWriter = null;
-            _systemCapture.Dispose();
+            _systemCapture?.Dispose();
             if (e.Exception != null)
                 StatusChanged?.Invoke(this, $"System recording error: {e.Exception.Message}");
         };

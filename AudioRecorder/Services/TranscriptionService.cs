@@ -44,7 +44,7 @@ public class TranscriptionService : IDisposable
         switch (_isInitialized)
         {
             case true when currentModelPath == _modelPath:
-                _processor!.ChangeLanguage(_userSettings.Language);
+                _processor!.ChangeLanguage(_userSettings.TranscriptLanguage);
                 return;
             case true:
                 DisposeInternal();
@@ -56,7 +56,7 @@ public class TranscriptionService : IDisposable
 
         _whisperFactory = WhisperFactory.FromPath(currentModelPath);
         _processor = _whisperFactory.CreateBuilder()
-            .WithLanguage(_userSettings.Language)
+            .WithLanguage(_userSettings.TranscriptLanguage)
             .WithPrintTimestamps()
             .WithNoSpeechThreshold(0.6f)
             .Build();
