@@ -1,4 +1,5 @@
 ﻿# Audio Recorder Specifications
+
 - Developed in C# and .NET 10
 - Record audio from the microphone
 - Record system audio (Loopback)
@@ -7,24 +8,29 @@
 - Save mixed audio as MP3 and transcription as TXT
 
 ## Implementation
+
 - **NAudio**: Library for audio management and device selection
 - **WaveInEvent**: Microphone audio capture
 - **WasapiLoopbackCapture**: System audio capture with advanced format handling
-- **Whisper.net**: AI-powered transcription using Ggml models
+- **Whisper.net**: AI-powered transcription using Ggml models via external process
 - **MediaFoundationResampler**: Audio conversion for transcription (16kHz mono)
 - **Synchronization**: Elapsed timer and silence injection to align streams
 - **Mixing**: Combined audio channels using MixingWaveProvider32
 - **Output**: MP3 (MediaFoundationEncoder) and TXT transcription
-- **Settings**: Persistent JSON configuration in %AppData%/AudioRecorder
+- **Settings**: Persistent JSON configuration with human-readable enums (JsonStringEnumConverter)
+- **Deployment**: Automatic copy of transcription service via MSBuild target
 
 ## Front-End Technologies
+
 - **Windows Presentation Foundation (WPF)**: Modern UI framework for Windows desktop applications
 - **XAML**: Markup for defining the user interface and layout
 - **Visual Feedback**: Real-time audio level indicators (ProgressBars)
 - **Live Transcription**: Dedicated text boxes for real-time transcription display
+- **Selectable Status**: Status messages displayed in a selectable TextBox for easy copying
 - **Dispatcher**: WPF threading model for safe UI updates
 
 ## Features
+
 - Modern WPF interface with enhanced styling
 - **Input device selection** via ComboBox for both mic and system audio
 - **Whisper Model selection** for transcription (base, small, etc.)
@@ -36,18 +42,23 @@
 - **Gap correction**: Automatic silence injection to handle WASAPI loopback timing issues
 
 ## Architecture
+
 - **Pattern**: Code-behind with Service-oriented architecture
-- **Services**: 
+- **Services**:
     - `AudioRecorderService`: Core logic for recording, synchronization, and mixing
     - `AudioDeviceService`: Enumeration and selection of audio devices
     - `TranscriptionService`: AI transcription engine management
     - `SettingsService`: Persistent configuration management
-- **Layout**: Responsive grid layout
+- **Layout**: Two-column responsive layout for better space utilization
+- **Inter-Process Communication**: Stdin/Stdout protocol using JSON and binary data
 - **Threading**: Async/Await for non-blocking operations and Dispatcher.Invoke for UI safety
 
 ## Applied Fixes
+
 - **WASAPI Synchronization**: Resolved through silence injection based on elapsed time to avoid drift
 - **AI Transcription**: Integrated local Whisper models for offline transcription
 - **Real-time Monitoring**: Added visual peak level indicators for both audio streams
 - **BadDeviceId error resolution** through explicit device selection
-- **Silence Filtering**: Energy-based thresholding (0.005f peak) and `WithNoSpeechThreshold(0.6f)` to prevent "Thank you" hallucinations during silent periods.
+- **Silence Filtering**: Energy-based thresholding (0.005f peak) and `WithNoSpeechThreshold(0.6f)` to prevent "Thank
+  you" hallucinations during silent periods.
+- **Robust Startup**: Health check ("Ready" signal) and stderr capture for external transcription process.

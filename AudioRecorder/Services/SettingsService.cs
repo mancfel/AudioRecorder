@@ -1,27 +1,54 @@
 ﻿using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AudioRecorder.Models;
+using AudioRecorder.Services.Interfaces;
 
 namespace AudioRecorder.Services;
 
-public class SettingsService
+public class SettingsService : ISettingsService
 {
-    public static UserSettings Settings => new Lazy<UserSettings>(LoadSettings()).Value;
-    
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "AudioRecorder",
         "settings.json"
     );
 
-    private static UserSettings LoadSettings()
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    private UserSettings? _settings;
+
+    public UserSettings Settings => _settings ??= LoadSettings();
+
+    public void SaveSettings(UserSettings settings)
+    {
+        _settings = settings;
+        try
+        {
+            var directory = Path.GetDirectoryName(SettingsPath);
+            if (directory != null && !Directory.Exists(directory)) Directory.CreateDirectory(directory);
+
+            var json = JsonSerializer.Serialize(settings, SerializerOptions);
+            File.WriteAllText(SettingsPath, json);
+        }
+        catch
+        {
+            // Ignore saving errors
+        }
+    }
+
+    private UserSettings LoadSettings()
     {
         try
         {
             if (File.Exists(SettingsPath))
             {
-                string json = File.ReadAllText(SettingsPath);
-                return JsonSerializer.Deserialize<UserSettings>(json) ?? new UserSettings();
+                var json = File.ReadAllText(SettingsPath);
+                return JsonSerializer.Deserialize<UserSettings>(json, SerializerOptions) ?? new UserSettings();
             }
         }
         catch
@@ -29,25 +56,7 @@ public class SettingsService
             // In case of error, return default settings
             return new UserSettings();
         }
+
         return new UserSettings();
-    }
-
-    public static void SaveSettings(UserSettings settings)
-    {
-        try
-        {
-            string? directory = Path.GetDirectoryName(SettingsPath);
-            if (directory != null && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(SettingsPath, json);
-        }
-        catch
-        {
-            // Ignore saving errors
-        }
     }
 }

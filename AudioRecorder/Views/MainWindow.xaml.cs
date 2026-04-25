@@ -1,40 +1,52 @@
-﻿using System.Globalization;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using Microsoft.Win32;
-using AudioRecorder.Services;
 using AudioRecorder.Models;
-using System.IO;
+using AudioRecorder.Models.Enums;
+using AudioRecorder.Services.Interfaces;
+using Microsoft.Win32;
 using Whisper.net.Logger;
 
 namespace AudioRecorder.Views;
 
 public partial class MainWindow
 {
-    private readonly AudioRecorderService audioService;
-    private AudioDeviceService.AudioDevice? selectedMicDevice;
-    private AudioDeviceService.WasapiDevice? selectedSysDevice;
+    private readonly IAudioRecorderService audioService;
+    private readonly IAudioDeviceService deviceService;
+    private readonly ISettingsService settingsService;
     private readonly UserSettings userSettings;
+    private AudioDevice? selectedMicDevice;
+    private WasapiDevice? selectedSysDevice;
 
-    public MainWindow()
+    public MainWindow(
+        IAudioRecorderService audioService,
+        IAudioDeviceService deviceService,
+        ISettingsService settingsService)
     {
+        this.audioService = audioService;
+        this.deviceService = deviceService;
+        this.settingsService = settingsService;
+        userSettings = settingsService.Settings;
+
         InitializeComponent();
-        audioService = new AudioRecorderService();
-        audioService.StatusChanged += OnStatusChanged;
-        audioService.LevelsUpdated += OnLevelsUpdated;
-        audioService.TranscriptionReceived += OnTranscriptionReceived;
-        
-        userSettings = SettingsService.Settings;
+
+        this.audioService.StatusChanged += OnStatusChanged;
+        this.audioService.LevelsUpdated += OnLevelsUpdated;
+        this.audioService.TranscriptionReceived += OnTranscriptionReceived;
+
         SetLanguage(userSettings.Language);
-        
+
         UiLanguageComboBox.ItemsSource = new List<string> { "en", "it" };
         UiLanguageComboBox.SelectedItem = userSettings.Language;
-        
+
         TranscriptLanguageComboBox.ItemsSource = new List<string> { "en", "it" };
         TranscriptLanguageComboBox.SelectedItem = userSettings.TranscriptLanguage;
-        
+
         Transcript.IsChecked = userSettings.TranscriptEnabled;
-        
+
+        RuntimeLibrariesListBox.ItemsSource = userSettings.RuntimeLibraryOrder;
+        UpdateTranscriptionSettingsState();
+
         LoadAudioDevices();
         LoadWhisperModels();
         LogProvider.AddLogger((level, s) => File.AppendAllLines("Log.log", [$"{level}: {s}"]));
@@ -50,10 +62,7 @@ public partial class MainWindow
             var oldDict = Application.Current.Resources.MergedDictionaries
                 .FirstOrDefault(d => d.Source != null && d.Source.OriginalString.Contains("Strings."));
 
-            if (oldDict != null)
-            {
-                Application.Current.Resources.MergedDictionaries.Remove(oldDict);
-            }
+            if (oldDict != null) Application.Current.Resources.MergedDictionaries.Remove(oldDict);
 
             Application.Current.Resources.MergedDictionaries.Add(dict);
         }
@@ -63,21 +72,21 @@ public partial class MainWindow
         }
     }
 
-    private string GetText(string key) => Application.Current.TryFindResource(key) as string ?? key;
+    private string GetText(string key)
+    {
+        return Application.Current.TryFindResource(key) as string ?? key;
+    }
 
     private void LoadWhisperModels()
     {
         try
         {
-            string appDataPath = Path.Combine(
+            var appDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "AudioRecorder"
             );
 
-            if (!Directory.Exists(appDataPath))
-            {
-                Directory.CreateDirectory(appDataPath);
-            }
+            if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
 
             var modelFiles = Directory.GetFiles(appDataPath, "*.bin")
                 .Select(Path.GetFileName)
@@ -95,7 +104,7 @@ public partial class MainWindow
                 {
                     WhisperModelComboBox.SelectedIndex = 0;
                     userSettings.WhisperModel = modelFiles[0]!;
-                    SettingsService.SaveSettings(userSettings);
+                    settingsService.SaveSettings(userSettings);
                 }
             }
             else
@@ -114,8 +123,8 @@ public partial class MainWindow
         if (WhisperModelComboBox.SelectedItem is string selectedModel)
         {
             userSettings.WhisperModel = selectedModel;
-            SettingsService.SaveSettings(userSettings);
-            
+            settingsService.SaveSettings(userSettings);
+
             // Reinitialize the transcription service if necessary
             // In this case, AudioRecorderService creates a new TranscriptionService
             // every time recording starts, reading the current settings.
@@ -126,9 +135,9 @@ public partial class MainWindow
     {
         try
         {
-            var micDevices = AudioDeviceService.GetInputDevices();
-            var sysDevices = AudioDeviceService.GetOutputDevices();
-            
+            var micDevices = deviceService.GetInputDevices();
+            var sysDevices = deviceService.GetOutputDevices();
+
             if (!micDevices.Any())
             {
                 StatusLabel.Text = GetText("NoMicAvailable");
@@ -137,7 +146,7 @@ public partial class MainWindow
             else
             {
                 MicDeviceComboBox.ItemsSource = micDevices;
-                
+
                 // Try to restore the last selected device
                 var savedMic = micDevices.FirstOrDefault(d => d.ProductName == userSettings.LastMicDeviceName);
                 if (savedMic != null)
@@ -169,7 +178,7 @@ public partial class MainWindow
                     selectedSysDevice = sysDevices.First();
                 }
             }
-            
+
             UpdateStatusLabel();
         }
         catch (Exception ex)
@@ -189,43 +198,55 @@ public partial class MainWindow
 
     private void MicDeviceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        selectedMicDevice = MicDeviceComboBox.SelectedItem as AudioDeviceService.AudioDevice;
+        selectedMicDevice = MicDeviceComboBox.SelectedItem as AudioDevice;
         if (selectedMicDevice != null)
         {
             userSettings.LastMicDeviceName = selectedMicDevice.ProductName;
-            SettingsService.SaveSettings(userSettings);
+            settingsService.SaveSettings(userSettings);
         }
+
         UpdateStatusLabel();
     }
 
     private void SysDeviceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        selectedSysDevice = SysDeviceComboBox.SelectedItem as AudioDeviceService.WasapiDevice;
+        selectedSysDevice = SysDeviceComboBox.SelectedItem as WasapiDevice;
         if (selectedSysDevice != null)
         {
             userSettings.LastSysDeviceId = selectedSysDevice.Id;
-            SettingsService.SaveSettings(userSettings);
+            settingsService.SaveSettings(userSettings);
         }
+
         UpdateStatusLabel();
     }
 
-    private void StartButton_Click(object sender, RoutedEventArgs e)
+    private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
         if (selectedMicDevice == null)
         {
-            MessageBox.Show(GetText("SelectMicWarning"), 
+            MessageBox.Show(GetText("SelectMicWarning"),
                 GetText("DeviceNotSelectedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         MicTranscriptionTextBox.Clear();
         SysTranscriptionTextBox.Clear();
-        audioService.StartRecording(selectedMicDevice.DeviceNumber, selectedSysDevice?.Id);
+
         StartButton.IsEnabled = false;
-        StopButton.IsEnabled = true;
-        SaveButton.IsEnabled = false;
-        MicDeviceComboBox.IsEnabled = false;
-        SysDeviceComboBox.IsEnabled = false;
+
+        await audioService.StartRecordingAsync(selectedMicDevice.DeviceNumber, selectedSysDevice?.Id);
+
+        if (audioService.IsRecording)
+        {
+            StopButton.IsEnabled = true;
+            SaveButton.IsEnabled = false;
+            MicDeviceComboBox.IsEnabled = false;
+            SysDeviceComboBox.IsEnabled = false;
+        }
+        else
+        {
+            StartButton.IsEnabled = true;
+        }
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -248,7 +269,6 @@ public partial class MainWindow
         };
 
         if (saveDialog.ShowDialog() == true)
-        {
             try
             {
                 SaveButton.IsEnabled = false;
@@ -256,22 +276,18 @@ public partial class MainWindow
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"{GetText("SaveError")}{ex.Message}", GetText("ErrorTitle"), 
+                MessageBox.Show($"{GetText("SaveError")}{ex.Message}", GetText("ErrorTitle"),
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
                 SaveButton.IsEnabled = true;
             }
-        }
     }
 
     private void OnStatusChanged(object? sender, string status)
     {
-        Dispatcher.BeginInvoke(() =>
-        {
-            StatusLabel.Text = status;
-        });
+        Dispatcher.BeginInvoke(() => { StatusLabel.Text = status; });
     }
 
     private void OnLevelsUpdated(object? sender, (float MicLevel, float SysLevel) levels)
@@ -283,14 +299,14 @@ public partial class MainWindow
         });
     }
 
-    private void OnTranscriptionReceived(object? sender, (AudioRecorderService.TranscriptionSource Source, string Text) data)
+    private void OnTranscriptionReceived(object? sender, (TranscriptionSource Source, string Text) data)
     {
         Dispatcher.BeginInvoke(() =>
         {
-            var textBox = data.Source == AudioRecorderService.TranscriptionSource.Microphone 
-                ? MicTranscriptionTextBox 
+            var textBox = data.Source == TranscriptionSource.Microphone
+                ? MicTranscriptionTextBox
                 : SysTranscriptionTextBox;
-                
+
             textBox.AppendText(data.Text + " ");
             textBox.ScrollToEnd();
         });
@@ -304,39 +320,75 @@ public partial class MainWindow
 
     private void UILanguage_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if(UiLanguageComboBox.SelectedValue is null) return;
-        string lang = UiLanguageComboBox.SelectedValue.ToString()!;
-        
+        if (UiLanguageComboBox.SelectedValue is null) return;
+        var lang = UiLanguageComboBox.SelectedValue.ToString()!;
+
         userSettings.Language = lang;
-        SettingsService.SaveSettings(userSettings);
+        settingsService.SaveSettings(userSettings);
         SetLanguage(lang);
-        
+
         // Refresh audio devices to update ToString() representation
         LoadAudioDevices();
     }
 
     private void TranscriptLanguage_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if(TranscriptLanguageComboBox.SelectedValue is null) return;
-        string lang = TranscriptLanguageComboBox.SelectedValue.ToString()!;
-        
+        if (TranscriptLanguageComboBox.SelectedValue is null) return;
+        var lang = TranscriptLanguageComboBox.SelectedValue.ToString()!;
+
         userSettings.TranscriptLanguage = lang;
-        SettingsService.SaveSettings(userSettings);
+        settingsService.SaveSettings(userSettings);
     }
 
     private void Transcript_OnChecked(object sender, RoutedEventArgs e)
     {
         userSettings.TranscriptEnabled = true;
-        WhisperModelComboBox.IsEnabled = true;
-        TranscriptLanguageComboBox.IsEnabled = true;
-        SettingsService.SaveSettings(userSettings);
+        UpdateTranscriptionSettingsState();
+        settingsService.SaveSettings(userSettings);
     }
 
     private void Transcript_OnUnchecked(object sender, RoutedEventArgs e)
     {
         userSettings.TranscriptEnabled = false;
-        WhisperModelComboBox.IsEnabled = false;
-        TranscriptLanguageComboBox.IsEnabled = false;
-        SettingsService.SaveSettings(userSettings);
+        UpdateTranscriptionSettingsState();
+        settingsService.SaveSettings(userSettings);
+    }
+
+    private void UpdateTranscriptionSettingsState()
+    {
+        var enabled = userSettings.TranscriptEnabled;
+        WhisperModelComboBox.IsEnabled = enabled;
+        TranscriptLanguageComboBox.IsEnabled = enabled;
+        RuntimeLibrariesListBox.IsEnabled = enabled;
+        MoveUpButton.IsEnabled = enabled;
+        MoveDownButton.IsEnabled = enabled;
+    }
+
+    private void MoveUpButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selectedIndex = RuntimeLibrariesListBox.SelectedIndex;
+        if (selectedIndex > 0)
+        {
+            var item = userSettings.RuntimeLibraryOrder[selectedIndex];
+            userSettings.RuntimeLibraryOrder.RemoveAt(selectedIndex);
+            userSettings.RuntimeLibraryOrder.Insert(selectedIndex - 1, item);
+            RuntimeLibrariesListBox.Items.Refresh();
+            RuntimeLibrariesListBox.SelectedIndex = selectedIndex - 1;
+            settingsService.SaveSettings(userSettings);
+        }
+    }
+
+    private void MoveDownButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selectedIndex = RuntimeLibrariesListBox.SelectedIndex;
+        if (selectedIndex >= 0 && selectedIndex < userSettings.RuntimeLibraryOrder.Count - 1)
+        {
+            var item = userSettings.RuntimeLibraryOrder[selectedIndex];
+            userSettings.RuntimeLibraryOrder.RemoveAt(selectedIndex);
+            userSettings.RuntimeLibraryOrder.Insert(selectedIndex + 1, item);
+            RuntimeLibrariesListBox.Items.Refresh();
+            RuntimeLibrariesListBox.SelectedIndex = selectedIndex + 1;
+            settingsService.SaveSettings(userSettings);
+        }
     }
 }

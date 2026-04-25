@@ -9,7 +9,6 @@
     <system:String x:Key="StartButton">Start Recording</system:String>
     <system:String x:Key="StopButton">Stop Recording</system:String>
     <system:String x:Key="SaveButton">Save Recording</system:String>
-    <system:String x:Key="StatusHeaderText">Status:</system:String>
     <system:String x:Key="ReadyStatus">Ready to record</system:String>
     <system:String x:Key="MicLevelLabel">Mic Level:</system:String>
     <system:String x:Key="SysLevelLabel">System Level:</system:String>
@@ -20,7 +19,7 @@
     <system:String x:Key="Instruction2">• Click 'Start' to begin recording microphone and system audio</system:String>
     <system:String x:Key="Instruction3">• Click 'Stop' to end the recording</system:String>
     <system:String x:Key="Instruction4">• Click 'Save' to save the mixed MP3 file</system:String>
-    
+
     <!-- Code-behind and Status strings -->
     <system:String x:Key="SelectMicWarning">Select a microphone before starting the recording.</system:String>
     <system:String x:Key="DeviceNotSelectedTitle">Device not selected</system:String>
@@ -46,4 +45,7 @@
     <system:String x:Key="TranscriptionLanguageLabel">Language:</system:String>
     <system:String x:Key="UiLanguageLabel">Language:</system:String>
     <system:String x:Key="EnableTranscriptionLabel">Enable Whisper Transcription</system:String>
+    <system:String x:Key="RuntimeLibraryOrderLabel">Runtime Libraries Priority:</system:String>
+    <system:String x:Key="MoveUp">Up</system:String>
+    <system:String x:Key="MoveDown">Down</system:String>
 </ResourceDictionary>

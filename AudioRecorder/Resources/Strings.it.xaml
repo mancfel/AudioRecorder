@@ -9,7 +9,6 @@
     <system:String x:Key="StartButton">Avvia Registrazione</system:String>
     <system:String x:Key="StopButton">Ferma Registrazione</system:String>
     <system:String x:Key="SaveButton">Salva Registrazione</system:String>
-    <system:String x:Key="StatusHeaderText">Stato:</system:String>
     <system:String x:Key="ReadyStatus">Pronto per registrare</system:String>
     <system:String x:Key="MicLevelLabel">Livello Mic:</system:String>
     <system:String x:Key="SysLevelLabel">Livello Sistema:</system:String>
@@ -20,7 +19,7 @@
     <system:String x:Key="Instruction2">• Clicca 'Avvia' per iniziare a registrare microfono e audio di sistema</system:String>
     <system:String x:Key="Instruction3">• Clicca 'Ferma' per terminare la registrazione</system:String>
     <system:String x:Key="Instruction4">• Clicca 'Salva' per salvare il file MP3 mixato</system:String>
-    
+
     <!-- Code-behind and Status strings -->
     <system:String x:Key="SelectMicWarning">Seleziona un microfono prima di iniziare la registrazione.</system:String>
     <system:String x:Key="DeviceNotSelectedTitle">Dispositivo non selezionato</system:String>
@@ -46,4 +45,7 @@
     <system:String x:Key="TranscriptionLanguageLabel">Lingua:</system:String>
     <system:String x:Key="UiLanguageLabel">Lingua:</system:String>
     <system:String x:Key="EnableTranscriptionLabel">Abilita Trascrizione con Whisper</system:String>
+    <system:String x:Key="RuntimeLibraryOrderLabel">Priorità Librerie Runtime:</system:String>
+    <system:String x:Key="MoveUp">Su</system:String>
+    <system:String x:Key="MoveDown">Giù</system:String>
 </ResourceDictionary>

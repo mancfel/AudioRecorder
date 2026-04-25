@@ -2,3 +2,6 @@
 /AudioRecorder/obj/
 /AudioRecorder.Tests/bin/
 /AudioRecorder.Tests/obj/
+/AudioRecorder.Transcription/bin/
+/AudioRecorder.Transcription/obj/
+/AudioRecorder.Tests/*.bin
